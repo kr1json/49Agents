@@ -136,7 +136,7 @@ export function createMessageRouter(sendToRelay, options = {}) {
     },
 
     [MSG.TERMINAL_RESIZE]: (payload) => {
-      terminalManager.resizeTerminal(payload.terminalId, payload.cols, payload.rows);
+      terminalManager.resizeTerminal(payload.terminalId, payload.cols, payload.rows, payload.pixelWidth, payload.pixelHeight);
     },
 
     [MSG.TERMINAL_SCROLL]: (payload) => {

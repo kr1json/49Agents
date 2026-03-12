@@ -8311,11 +8311,13 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
           try {
             if (termInfo.safeFitAndSync) termInfo.safeFitAndSync();
             else termInfo.fitAddon.fit();
-            // Send resize immediately
+            // Send resize immediately (include pixel dimensions so agent persists them)
             sendWs('terminal:resize', {
               terminalId: paneData.id,
               cols: termInfo.xterm.cols,
-              rows: termInfo.xterm.rows
+              rows: termInfo.xterm.rows,
+              pixelWidth: paneData.width,
+              pixelHeight: paneData.height
             }, paneData.agentId);
             // Re-attach after resize to get clean history + live screen.
             // Delay slightly so tmux has time to process the new dimensions.

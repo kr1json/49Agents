@@ -307,7 +307,7 @@ export const terminalManager = {
   /**
    * Resize a terminal
    */
-  resizeTerminal(terminalId, cols, rows) {
+  resizeTerminal(terminalId, cols, rows, pixelWidth, pixelHeight) {
     const conn = activeTerminals.get(terminalId);
     if (conn && conn.ttydWs && conn.ttydWs.readyState === WebSocket.OPEN) {
       const resizeData = JSON.stringify({ columns: cols, rows });
@@ -317,8 +317,8 @@ export const terminalManager = {
       conn.ttydWs.send(msg);
     }
 
-    // Also resize the tmux pane
-    tmuxService.resizeTerminal(terminalId, cols, rows);
+    // Also resize the tmux pane (and persist pixel size if provided)
+    tmuxService.resizeTerminal(terminalId, cols, rows, pixelWidth, pixelHeight);
   },
 
   /**

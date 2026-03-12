@@ -462,7 +462,7 @@ export class TmuxService {
     }
   }
 
-  async resizeTerminal(terminalId, cols, rows) {
+  async resizeTerminal(terminalId, cols, rows, pixelWidth, pixelHeight) {
     const terminal = terminals.get(terminalId);
     if (!terminal) throw new Error('Terminal not found');
 
@@ -472,6 +472,12 @@ export class TmuxService {
       await execAsync(`tmux resize-pane -t ${escapeShellArg(terminal.tmuxSession)} -x ${validCols} -y ${validRows}`);
     } catch {
       // Resize might fail if terminal is detached
+    }
+
+    // Persist pixel dimensions so the pane size survives agent restart
+    if (pixelWidth && pixelHeight) {
+      terminal.size = { width: pixelWidth, height: pixelHeight };
+      this.persistState();
     }
   }
 
