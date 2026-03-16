@@ -519,6 +519,50 @@ html, body {
   gap: 8px;
 }
 
+/* Shortcut number badge (Tab+1..9 quick-jump) */
+.pane-shortcut-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: monospace;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+.pane-shortcut-badge:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.9);
+}
+.pane.focused .pane-shortcut-badge {
+  background: rgba(233, 170, 255, 0.15);
+  border-color: rgba(233, 170, 255, 0.4);
+  color: rgba(233, 170, 255, 0.9);
+}
+.pane-shortcut-input {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(233, 170, 255, 0.6);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: monospace;
+  text-align: center;
+  padding: 0;
+  outline: none;
+  flex-shrink: 0;
+}
+
 /* Connection status indicator */
 .connection-status {
   width: 8px;

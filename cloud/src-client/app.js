@@ -86,6 +86,69 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
   let lastTabUpTime = 0;       // timestamp for double-tap Tab detection
   let moveModeOriginalZoom = 1;  // zoom before entering move mode (for Esc restore)
 
+  // Shortcut number helpers (Tab+1..9 quick-jump)
+  function getNextShortcutNumber() {
+    const used = new Set(state.panes.map(p => p.shortcutNumber).filter(Boolean));
+    for (let n = 1; n <= 9; n++) {
+      if (!used.has(n)) return n;
+    }
+    return null; // all 1-9 taken
+  }
+
+  function shortcutBadgeHtml(paneData) {
+    const num = paneData.shortcutNumber;
+    if (!num) return '';
+    return `<span class="pane-shortcut-badge" data-tooltip="Tab+${num} to jump here (click to reassign)">${num}</span>`;
+  }
+
+  function jumpToPane(paneData) {
+    // Same zoom/center behavior as move mode confirm
+    const targetZoom = calcMoveModeZoom(paneData);
+    state.zoom = targetZoom;
+    const paneCenterX = paneData.x + paneData.width / 2;
+    const paneCenterY = paneData.y + paneData.height / 2;
+    state.panX = window.innerWidth / 2 - paneCenterX * state.zoom;
+    state.panY = window.innerHeight / 2 - paneCenterY * state.zoom;
+
+    canvas.style.transition = 'transform 100ms ease';
+    updateCanvasTransform();
+    setTimeout(() => { canvas.style.transition = ''; }, 120);
+
+    focusPane(paneData);
+    setTimeout(() => { focusTerminalInput(paneData.id); }, 50);
+    saveViewState();
+  }
+
+  function reassignShortcutNumber(paneData, newNum) {
+    // Swap if another pane has this number
+    const existing = state.panes.find(p => p.shortcutNumber === newNum && p.id !== paneData.id);
+    if (existing) {
+      existing.shortcutNumber = paneData.shortcutNumber || null;
+      updateShortcutBadge(existing);
+      cloudSaveLayout(existing);
+    }
+    paneData.shortcutNumber = newNum;
+    updateShortcutBadge(paneData);
+    cloudSaveLayout(paneData);
+  }
+
+  function updateShortcutBadge(paneData) {
+    const paneEl = document.getElementById(`pane-${paneData.id}`);
+    if (!paneEl) return;
+    const oldBadge = paneEl.querySelector('.pane-shortcut-badge');
+    if (oldBadge) oldBadge.remove();
+    if (paneData.shortcutNumber) {
+      const headerRight = paneEl.querySelector('.pane-header-right');
+      if (headerRight) {
+        const badge = document.createElement('span');
+        badge.className = 'pane-shortcut-badge';
+        badge.dataset.tooltip = `Tab+${paneData.shortcutNumber} to jump here (click to reassign)`;
+        badge.textContent = paneData.shortcutNumber;
+        headerRight.insertBefore(badge, headerRight.firstChild);
+      }
+    }
+  }
+
   // Calculate pane placement position from click or center of viewport
   function calcPlacementPos(placementPos, halfW, halfH) {
     if (placementPos) {
@@ -120,7 +183,7 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
   function isExternalInputFocused() {
     const el = document.activeElement;
     if (!el || el === document.body) return false;
-    if (el.closest('.pane')) return el.classList.contains('beads-tag-input');
+    if (el.closest('.pane')) return el.classList.contains('beads-tag-input') || el.classList.contains('pane-shortcut-input');
     const tag = el.tagName;
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
   }
@@ -302,6 +365,7 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
       if (pane.claudeSessionId) metadata.claudeSessionId = pane.claudeSessionId;
       if (pane.claudeSessionName) metadata.claudeSessionName = pane.claudeSessionName;
       if (pane.workingDir) metadata.workingDir = pane.workingDir;
+      if (pane.shortcutNumber) metadata.shortcutNumber = pane.shortcutNumber;
       cloudFetch('PUT', `/api/layouts/${pane.id}`, {
         paneType: pane.type,
         positionX: pane.x,
@@ -3690,10 +3754,12 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
         titleHtml = `${deviceTag}${paneData.type}`;
     }
 
+    if (!paneData.shortcutNumber) paneData.shortcutNumber = getNextShortcutNumber();
     pane.innerHTML = `
       <div class="pane-header">
         <span class="pane-title">${titleHtml}</span>
         <div class="pane-header-right">
+          ${shortcutBadgeHtml(paneData)}
           <span class="connection-status disconnected" data-tooltip="Disconnected"></span>
           <button class="pane-close" aria-label="Close pane">&times;</button>
         </div>
@@ -3782,6 +3848,7 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
           if (cl.metadata.claudeSessionId) pane.claudeSessionId = cl.metadata.claudeSessionId;
           if (cl.metadata.claudeSessionName) pane.claudeSessionName = cl.metadata.claudeSessionName;
           if (cl.metadata.workingDir) pane.workingDir = cl.metadata.workingDir;
+          if (cl.metadata.shortcutNumber) pane.shortcutNumber = cl.metadata.shortcutNumber;
         }
         // Fill in device from agent hostname if the agent didn't return one
         if (!pane.device && agentHostname) pane.device = agentHostname;
@@ -3856,6 +3923,7 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
             if (meta.workingDir) pane.workingDir = meta.workingDir;
             if (meta.claudeSessionId) pane.claudeSessionId = meta.claudeSessionId;
             if (meta.claudeSessionName) pane.claudeSessionName = meta.claudeSessionName;
+            if (meta.shortcutNumber) pane.shortcutNumber = meta.shortcutNumber;
             state.panes.push(pane);
             renderOfflinePlaceholder(pane);
           }
@@ -4915,6 +4983,7 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
     pane.style.zIndex = paneData.zIndex;
     pane.dataset.paneId = paneData.id;
 
+    if (!paneData.shortcutNumber) paneData.shortcutNumber = getNextShortcutNumber();
     const deviceTag = paneData.device ? deviceLabelHtml(paneData.device) : '';
 
     pane.innerHTML = `
@@ -4924,6 +4993,7 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
           ${paneData.repoName || 'Git Graph'}
         </span>
         <div class="pane-header-right">
+          ${shortcutBadgeHtml(paneData)}
           <div class="pane-zoom-controls">
             <button class="pane-zoom-btn zoom-out" data-tooltip="Zoom out">−</button>
             <button class="pane-zoom-btn zoom-in" data-tooltip="Zoom in">+</button>
@@ -5202,12 +5272,14 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
     pane.style.zIndex = paneData.zIndex;
     pane.dataset.paneId = paneData.id;
 
+    if (!paneData.shortcutNumber) paneData.shortcutNumber = getNextShortcutNumber();
     const deviceTag = paneData.device ? deviceLabelHtml(paneData.device) : '';
     const beadsTag = beadsTagHtml(paneData.beadsTag);
     pane.innerHTML = `
       <div class="pane-header">
         <span class="pane-title">${deviceTag}${beadsTag}<span style="opacity:0.7;">Terminal</span></span>
         <div class="pane-header-right">
+          ${shortcutBadgeHtml(paneData)}
           <button class="beads-tag-btn" aria-label="Set beads issue" data-tooltip="Set beads issue"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="0">${ICON_BEADS}</svg></button>
           <button class="term-refresh-history" aria-label="Reload history" data-tooltip="Reload history"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 3a7 7 0 1 0 1 5"/><polyline points="14 1 14 5 10 5"/></svg></button>
           <div class="pane-zoom-controls">
@@ -5259,12 +5331,14 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
     pane.style.zIndex = paneData.zIndex;
     pane.dataset.paneId = paneData.id;
 
+    if (!paneData.shortcutNumber) paneData.shortcutNumber = getNextShortcutNumber();
     const deviceTag = paneData.device ? deviceLabelHtml(paneData.device) : '';
 
     pane.innerHTML = `
       <div class="pane-header">
         <span class="pane-title">${deviceTag}📄 ${escapeHtml(paneData.fileName || 'Untitled')}</span>
         <div class="pane-header-right">
+          ${shortcutBadgeHtml(paneData)}
           <button class="pane-mention-btn" data-tooltip="Mention in Claude Code">@</button>
           <div class="pane-zoom-controls">
             <button class="pane-zoom-btn zoom-out" data-tooltip="Zoom out">−</button>
@@ -5702,6 +5776,7 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
     pane.style.zIndex = paneData.zIndex;
     pane.dataset.paneId = paneData.id;
 
+    if (!paneData.shortcutNumber) paneData.shortcutNumber = getNextShortcutNumber();
     const fontSize = paneData.fontSize || 14;
 
     // Build images HTML
@@ -5722,6 +5797,7 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
       <div class="pane-header">
         <span class="pane-title">\u{1F4DD} Note</span>
         <div class="pane-header-right">
+          ${shortcutBadgeHtml(paneData)}
           <button class="note-text-only-btn" aria-label="Preview markdown" data-tooltip="Preview markdown">\u{1F441}</button>
           <button class="pane-close" aria-label="Close pane">&times;</button>
         </div>
@@ -5910,10 +5986,12 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
     pane.style.zIndex = paneData.zIndex;
     pane.dataset.paneId = paneData.id;
 
+    if (!paneData.shortcutNumber) paneData.shortcutNumber = getNextShortcutNumber();
     pane.innerHTML = `
       <div class="pane-header">
         <span class="pane-title">🌐 ${escapeHtml(truncateUrl(paneData.url))}</span>
         <div class="pane-header-right">
+          ${shortcutBadgeHtml(paneData)}
           <button class="pane-mention-btn" data-tooltip="Mention in Claude Code">@</button>
           <button class="iframe-refresh" aria-label="Refresh" data-tooltip="Refresh"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 3a7 7 0 1 0 1 5"/><polyline points="14 1 14 5 10 5"/></svg></button>
           <button class="iframe-open-external" aria-label="Open in browser" data-tooltip="Open in browser"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 2h4v4"/><path d="M14 2L7 9"/><path d="M13 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"/></svg></button>
@@ -6087,6 +6165,7 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
     pane.style.zIndex = paneData.zIndex;
     pane.dataset.paneId = paneData.id;
 
+    if (!paneData.shortcutNumber) paneData.shortcutNumber = getNextShortcutNumber();
     const deviceTag = paneData.device ? deviceLabelHtml(paneData.device) : '';
     pane.innerHTML = `
       <div class="pane-header">
@@ -6095,6 +6174,7 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
           Beads Issues
         </span>
         <div class="pane-header-right">
+          ${shortcutBadgeHtml(paneData)}
           <div class="pane-zoom-controls">
             <button class="pane-zoom-btn zoom-out" data-tooltip="Zoom out">\u2212</button>
             <button class="pane-zoom-btn zoom-in" data-tooltip="Zoom in">+</button>
@@ -6172,6 +6252,7 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
     pane.style.zIndex = paneData.zIndex;
     pane.dataset.paneId = paneData.id;
 
+    if (!paneData.shortcutNumber) paneData.shortcutNumber = getNextShortcutNumber();
     const shortPath = paneData.folderPath.replace(/^\/home\/[^/]+/, '~');
     const deviceTag = paneData.device ? deviceLabelHtml(paneData.device) : '';
 
@@ -6182,6 +6263,7 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
           <span class="folder-path-label">${escapeHtml(shortPath)}</span>
         </span>
         <div class="pane-header-right">
+          ${shortcutBadgeHtml(paneData)}
           <button class="folder-toolbar-btn folder-new-file-btn" data-tooltip="New File">
             <svg viewBox="0 0 24 24" width="14" height="14"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" fill="none" stroke="currentColor" stroke-width="2"/><line x1="12" y1="11" x2="12" y2="17" stroke="currentColor" stroke-width="2"/><line x1="9" y1="14" x2="15" y2="14" stroke="currentColor" stroke-width="2"/></svg>
           </button>
@@ -7644,6 +7726,44 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
     }
 
     const applyZoom = () => applyPaneZoom(paneData, paneEl);
+
+    // Shortcut badge click: reassign number (delegated so it works after badge replacement)
+    paneEl.addEventListener('click', (e) => {
+      const badge = e.target.closest('.pane-shortcut-badge');
+      if (!badge) return;
+      e.stopPropagation();
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.maxLength = 1;
+      input.className = 'pane-shortcut-input';
+      input.value = paneData.shortcutNumber || '';
+      badge.replaceWith(input);
+      input.focus();
+      input.select();
+      let committed = false;
+      const commit = () => {
+        if (committed) return;
+        committed = true;
+        const val = parseInt(input.value, 10);
+        if (val >= 1 && val <= 9) {
+          reassignShortcutNumber(paneData, val);
+        }
+        updateShortcutBadge(paneData);
+      };
+      input.addEventListener('keydown', (ev) => {
+        ev.stopPropagation();
+        if (ev.key === 'Enter' || ev.key === 'Escape') {
+          if (ev.key === 'Escape') input.value = '';
+          commit();
+        }
+      });
+      input.addEventListener('blur', commit);
+    });
+    paneEl.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.pane-shortcut-badge') || e.target.closest('.pane-shortcut-input')) {
+        e.stopPropagation();
+      }
+    });
 
     if (zoomInBtn) {
       zoomInBtn.addEventListener('click', (e) => {
@@ -10099,6 +10219,18 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
           // Single mode: close focused pane (fallback to DOM query if lastFocusedPaneId is stale)
           const targetId = lastFocusedPaneId || (document.querySelector('.pane.focused')?.dataset?.paneId);
           if (targetId) deletePane(targetId);
+        }
+        return;
+      }
+      // Tab+1..9: jump to pane with that shortcut number
+      if (tabHeld && e.key >= '1' && e.key <= '9') {
+        const num = parseInt(e.key, 10);
+        const targetPane = state.panes.find(p => p.shortcutNumber === num);
+        if (targetPane) {
+          tabChordUsed = true;
+          e.preventDefault();
+          e.stopPropagation();
+          jumpToPane(targetPane);
         }
         return;
       }
