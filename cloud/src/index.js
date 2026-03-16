@@ -55,6 +55,12 @@ if (landingDir && config.appHost) {
 }
 
 // ---------------------------------------------------------------------------
+// Reverse proxy support — trust X-Forwarded-* headers so req.secure,
+// req.protocol, and req.ip resolve correctly behind nginx / Cloudflare / etc.
+// ---------------------------------------------------------------------------
+app.set('trust proxy', true);
+
+// ---------------------------------------------------------------------------
 // Security middleware
 // ---------------------------------------------------------------------------
 app.use(
