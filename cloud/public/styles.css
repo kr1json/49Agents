@@ -563,6 +563,33 @@ html, body {
   flex-shrink: 0;
 }
 
+/* Minimap */
+#minimap {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  width: 200px;
+  height: 150px;
+  z-index: 10000;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  cursor: crosshair;
+  animation: minimapFadeIn 0.2s ease-out;
+}
+#minimap canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+@keyframes minimapFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* Connection status indicator */
 .connection-status {
   width: 8px;
