@@ -231,7 +231,7 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
       return;
     }
 
-    const shouldShow = minimapEnabled && (moveModeActive || !document.querySelector('.pane.focused'));
+    const shouldShow = minimapEnabled;
     if (!shouldShow) {
       if (minimapVisible) {
         wrap.style.display = 'none';
@@ -357,6 +357,7 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
 
   // Single loop: renders at 60fps when visible, polls at 5fps when hidden
   function startMinimapLoop() {
+    if (minimapRafId || minimapTimerId) return; // already running
     function tick() {
       renderMinimap();
       if (minimapVisible) {
@@ -10455,7 +10456,11 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
         e.preventDefault();
         e.stopPropagation();
         minimapEnabled = !minimapEnabled;
-        if (!minimapEnabled) hideMinimap();
+        if (!minimapEnabled) {
+          hideMinimap();
+        } else {
+          startMinimapLoop();
+        }
         return;
       }
       // Tab+1..9: jump to pane with that shortcut number
