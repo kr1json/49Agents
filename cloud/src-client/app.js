@@ -9837,6 +9837,9 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
     // Middle mouse button: force canvas pan even over panes (capture phase)
     canvasContainer.addEventListener('mousedown', handleMiddleMousePan, true);
 
+    // Right mouse button: force canvas pan even over panes (capture phase)
+    canvasContainer.addEventListener('mousedown', handleRightMousePan, true);
+
     // Disable middle mouse button paste entirely (Linux X11 primary selection)
     document.addEventListener('auxclick', (e) => {
       if (e.button === 1) e.preventDefault();
@@ -10771,6 +10774,50 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
       saveViewState();
       document.removeEventListener('mousemove', moveHandler);
       document.removeEventListener('mouseup', endHandler);
+    };
+
+    document.addEventListener('mousemove', moveHandler);
+    document.addEventListener('mouseup', endHandler);
+  }
+
+  // Right mouse button pan — works even over panes (terminals, editors, etc.)
+  function handleRightMousePan(e) {
+    if (e.button !== 2) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    isPanning = true;
+    let didMove = false;
+    panStartX = e.clientX - state.panX;
+    panStartY = e.clientY - state.panY;
+    document.body.style.cursor = 'grabbing';
+    showIframeOverlays();
+
+    // Suppress context menu while dragging
+    const suppressContextMenu = (ce) => { ce.preventDefault(); };
+    document.addEventListener('contextmenu', suppressContextMenu, true);
+
+    const moveHandler = (moveE) => {
+      if (!isPanning) return;
+      moveE.preventDefault();
+      didMove = true;
+      state.panX = moveE.clientX - panStartX;
+      state.panY = moveE.clientY - panStartY;
+      updateCanvasTransform();
+    };
+
+    const endHandler = (upE) => {
+      if (upE.button !== 2) return;
+      isPanning = false;
+      document.body.style.cursor = '';
+      hideIframeOverlays();
+      saveViewState();
+      document.removeEventListener('mousemove', moveHandler);
+      document.removeEventListener('mouseup', endHandler);
+      // Remove context menu suppression after a tick (so the mouseup's contextmenu is still caught)
+      setTimeout(() => {
+        document.removeEventListener('contextmenu', suppressContextMenu, true);
+      }, 0);
     };
 
     document.addEventListener('mousemove', moveHandler);
