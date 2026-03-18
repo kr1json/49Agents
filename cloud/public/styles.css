@@ -1446,6 +1446,50 @@ body.minimap-hidden #controls {
 .note-markdown-preview h1 { font-size: 1.5em; }
 .note-markdown-preview h2 { font-size: 1.25em; }
 .note-markdown-preview h3 { font-size: 1.1em; }
+.note-markdown-preview h4 { font-size: 1em; }
+.note-markdown-preview h5 { font-size: 0.9em; }
+.note-markdown-preview h6 { font-size: 0.85em; }
+
+.note-markdown-preview h4,
+.note-markdown-preview h5,
+.note-markdown-preview h6 {
+  color: rgba(255, 235, 150, 0.75);
+  margin: 0.6em 0 0.3em 0;
+  line-height: 1.3;
+}
+
+.note-markdown-preview table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.5em 0;
+}
+
+.note-markdown-preview th,
+.note-markdown-preview td {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 0.3em 0.6em;
+  text-align: left;
+}
+
+.note-markdown-preview th {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 235, 150, 0.9);
+  font-weight: 600;
+}
+
+.note-markdown-preview tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.note-markdown-preview input[type="checkbox"] {
+  margin-right: 0.4em;
+  pointer-events: none;
+}
+
+.note-markdown-preview img {
+  max-width: 100%;
+  border-radius: 4px;
+}
 
 .note-markdown-preview strong {
   color: rgba(255, 255, 255, 1);

@@ -6360,6 +6360,10 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
         ${paneNameHtml(paneData)}
         <div class="pane-header-right">
           ${shortcutBadgeHtml(paneData)}
+          <div class="pane-zoom-controls">
+            <button class="pane-zoom-btn zoom-out" data-tooltip="Zoom out">\u2212</button>
+            <button class="pane-zoom-btn zoom-in" data-tooltip="Zoom in">+</button>
+          </div>
           <button class="note-text-only-btn" aria-label="Preview markdown" data-tooltip="Preview markdown">\u{1F441}</button>
           <button class="pane-close" aria-label="Close pane">&times;</button>
         </div>
@@ -6515,7 +6519,7 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
   // Render markdown to HTML for preview mode
   function renderMarkdownPreview(markdown) {
     if (window.marked) {
-      return window.marked.parse(markdown || '');
+      return window.marked.parse(markdown || '', { breaks: true, gfm: true });
     }
     // Fallback: escape HTML and convert newlines
     return escapeHtml(markdown || '').replace(/\n/g, '<br>');
@@ -7727,7 +7731,9 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
       mountEl.style.display = 'none';
       previewEl.style.display = 'block';
       previewEl.innerHTML = renderMarkdownPreview(paneData.content);
-      previewEl.style.fontSize = `${paneData.fontSize || 14}px`;
+      const baseFontSize = paneData.fontSize || 14;
+      const scale = (paneData.zoomLevel || 100) / 100;
+      previewEl.style.fontSize = `${Math.round(baseFontSize * scale)}px`;
 
       cloudSaveLayout(paneData);
 
@@ -7782,7 +7788,9 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
       mountEl.style.display = 'none';
       previewEl.style.display = 'block';
       previewEl.innerHTML = renderMarkdownPreview(paneData.content);
-      previewEl.style.fontSize = `${paneData.fontSize || 14}px`;
+      const baseFontSize = paneData.fontSize || 14;
+      const scale = (paneData.zoomLevel || 100) / 100;
+      previewEl.style.fontSize = `${Math.round(baseFontSize * scale)}px`;
 
       let exitBtn = paneEl.querySelector('.text-only-exit');
       if (!exitBtn) {
@@ -8262,8 +8270,12 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
       const edInfo = fileEditors.get(paneData.id);
       if (edInfo?.monacoEditor) edInfo.monacoEditor.updateOptions({ fontSize: Math.round(13 * scale) });
     } else if (paneData.type === 'note') {
-      const editor = paneEl.querySelector('.note-editor');
-      if (editor) editor.style.fontSize = `${Math.round(16 * scale)}px`;
+      const noteInfo = noteEditors.get(paneData.id);
+      if (noteInfo?.monacoEditor) {
+        noteInfo.monacoEditor.updateOptions({ fontSize: Math.round((paneData.fontSize || 14) * scale) });
+      }
+      const preview = paneEl.querySelector('.note-markdown-preview');
+      if (preview) preview.style.fontSize = `${Math.round((paneData.fontSize || 14) * scale)}px`;
     } else if (paneData.type === 'git-graph') {
       const graphContent = paneEl.querySelector('.git-graph-output');
       if (graphContent) graphContent.style.fontSize = `${Math.round(12 * scale)}px`;
