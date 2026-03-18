@@ -1211,18 +1211,11 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
             }
           });
           renderHud();
-          // Re-render panes with new color
+          // Re-render pane headers with new device color
           for (const p of state.panes) {
             if (p.device === deviceName) {
               const paneEl = document.getElementById(`pane-${p.id}`);
-              if (!paneEl) continue;
-              const label = paneEl.querySelector('.device-label');
-              if (label) {
-                const color = getDeviceColor(deviceName);
-                label.style.background = color.bg;
-                label.style.borderColor = color.border;
-                label.style.color = color.text;
-              }
+              if (paneEl) applyDeviceHeaderColor(paneEl, deviceName);
             }
           }
         });
@@ -6220,10 +6213,18 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
   }, 30000);
 
   function deviceLabelHtml(deviceName, extraStyle = '') {
+    // Device identity is now shown via header background tint, not a label
+    return '';
+  }
+
+  function applyDeviceHeaderColor(paneEl, deviceName) {
+    if (!deviceName) return;
     const color = getDeviceColor(deviceName);
-    if (!color) return '';
-    const style = `background:${color.bg}; border-color:${color.border}; color:${color.text};${extraStyle ? ' ' + extraStyle : ''}`;
-    return `<span class="device-label" style="${style}">${escapeHtml(deviceName)}</span>`;
+    if (!color || !color.rgb) return;
+    const header = paneEl.querySelector('.pane-header');
+    if (!header) return;
+    header.style.background = `rgba(${color.rgb}, 0.15)`;
+    header.style.borderBottom = `1px solid rgba(${color.rgb}, 0.2)`;
   }
 
   // Escape HTML for safe insertion
@@ -8360,6 +8361,9 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
     const resizeHandle = paneEl.querySelector('.pane-resize-handle');
     const zoomInBtn = paneEl.querySelector('.zoom-in');
     const zoomOutBtn = paneEl.querySelector('.zoom-out');
+
+    // Apply device color to header
+    applyDeviceHeaderColor(paneEl, paneData.device);
 
     // Initialize zoom level for this pane
     if (!paneData.zoomLevel) paneData.zoomLevel = 100;
