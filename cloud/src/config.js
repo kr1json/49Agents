@@ -18,9 +18,6 @@ export const config = {
     userTtl: '1h',
     refreshTtl: '7d',
   },
-  lemon: {
-    webhookSecret: process.env.LEMONSQUEEZY_WEBHOOK_SECRET || '',
-  },
   cloudHost: process.env.CLOUD_HOST || 'localhost:1071',
   appHost: process.env.APP_HOST || '',
   landingDir: process.env.LANDING_DIR || '',

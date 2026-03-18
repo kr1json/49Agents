@@ -12,7 +12,6 @@ import { setupGoogleAuth } from './auth/google.js';
 import { requireAuth } from './auth/middleware.js';
 import { setupApiRoutes } from './routes/api.js';
 import { setupLayoutRoutes } from './routes/layouts.js';
-import { setupBillingRoutes, handleLemonWebhook } from './billing/lemonsqueezy.js';
 import { setupDownloadRoutes } from './routes/download.js';
 import { setupPreferencesRoutes } from './routes/preferences.js';
 import { setupAnalyticsRoutes } from './routes/analytics.js';
@@ -83,9 +82,6 @@ app.use(
 
 app.use(cookieParser());
 
-// LemonSqueezy webhook needs raw body for signature verification — must come BEFORE express.json()
-app.post('/billing/webhook', express.raw({ type: 'application/json' }), handleLemonWebhook);
-
 app.use(express.json({ limit: '16kb' }));
 
 // ---------------------------------------------------------------------------
@@ -120,11 +116,6 @@ setupLayoutRoutes(app);
 // User preferences routes (cloud-direct)
 // ---------------------------------------------------------------------------
 setupPreferencesRoutes(app);
-
-// ---------------------------------------------------------------------------
-// Billing routes (checkout, portal, status)
-// ---------------------------------------------------------------------------
-setupBillingRoutes(app);
 
 // ---------------------------------------------------------------------------
 // Analytics routes (public tracking only — admin routes on Tailscale server)
