@@ -8186,8 +8186,18 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
         return;
       }
 
+      // --- DEBUG SCROLL ---
+      const isAlt = xterm.buffer.active === xterm.buffer.alternate;
+      const baseY = xterm.buffer.active.baseY;
+      const viewportY = xterm.buffer.active.viewportY;
+      const mouseActive = !!xterm._core?.coreMouseService?.areMouseEventsActive;
+      const bufLength = xterm.buffer.active.length;
+      console.log(`[SCROLL] alt=${isAlt} mouseReport=${mouseActive} baseY=${baseY} viewportY=${viewportY} bufLen=${bufLength} deltaY=${e.deltaY.toFixed(0)}`);
+      // --- END DEBUG ---
+
       // TUI app has mouse reporting enabled — re-dispatch to xterm's element
-      if (xterm._core?.coreMouseService?.areMouseEventsActive) {
+      if (mouseActive) {
+        console.log('[SCROLL] -> mouse-reporting path (re-dispatch to xterm)');
         const xtermEl = container.querySelector('.xterm-screen');
         if (xtermEl) {
           const clone = new WheelEvent('wheel', e);
@@ -8197,29 +8207,30 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
         return;
       }
 
-      // Alternate screen buffer without mouse reporting (nano, vim default, less, man, etc.)
-      // — send arrow key sequences so the app scrolls its content
-      if (xterm.buffer.active === xterm.buffer.alternate) {
-        const count = Math.abs(
-          e.deltaMode === 1
-            ? Math.round(e.deltaY * 1.125)
-            : Math.round(e.deltaY / 33) || (e.deltaY > 0 ? 1 : -1)
-        );
-        const arrow = e.deltaY > 0 ? '\x1b[B' : '\x1b[A'; // Down : Up
+      // Calculate scroll amount
+      const lines = e.deltaMode === 1
+        ? Math.round(e.deltaY * 1.125)
+        : Math.round(e.deltaY / 33) || (e.deltaY > 0 ? 1 : -1);
+
+      // If there's scrollback content, scroll through it normally.
+      // If there's no scrollback (fullscreen app like nano/vim/less owns the
+      // screen, or tmux just repainted after resize), send arrow keys instead
+      // so the running application receives the scroll as navigation input.
+      const hasScrollback = baseY > 0;
+      if (hasScrollback) {
+        console.log(`[SCROLL] -> scrollLines(${lines}) [has scrollback]`);
+        xterm.scrollLines(lines);
+      } else {
+        const count = Math.abs(lines);
+        const arrow = e.deltaY > 0 ? '\x1b[B' : '\x1b[A';
+        console.log(`[SCROLL] -> arrow keys x${count} [no scrollback, sending ${e.deltaY > 0 ? 'DOWN' : 'UP'}]`);
         const termRef = terminals.get(paneData.id);
         if (termRef?._attached) {
           const seq = arrow.repeat(count);
           const encoded = btoa(unescape(encodeURIComponent(seq)));
           sendWs('terminal:input', { terminalId: paneData.id, data: encoded }, paneData.agentId);
         }
-        return;
       }
-
-      // Normal buffer — scroll the scrollback
-      const lines = e.deltaMode === 1
-        ? Math.round(e.deltaY * 1.125)
-        : Math.round(e.deltaY / 33) || (e.deltaY > 0 ? 1 : -1);
-      xterm.scrollLines(lines);
     }, { passive: false, capture: true });
 
     // Store terminal info first
@@ -9317,11 +9328,13 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
               pixelWidth: paneData.width,
               pixelHeight: paneData.height
             }, paneData.agentId);
-            // Re-attach after resize to get clean history + live screen.
-            // Delay slightly so tmux has time to process the new dimensions.
+            // After resize, clear stale scrollback so TUI apps (vim, nano)
+            // don't have orphaned history lines that cause scroll-past issues.
+            // The resize message already tells tmux to repaint at the new size.
             setTimeout(() => {
-              reattachTerminal(paneData);
-            }, 300);
+              const ti = terminals.get(paneData.id);
+              if (ti) ti.xterm.clearScrollback();
+            }, 500);
           } catch (e) {
             // Ignore fit errors
           }
