@@ -6,6 +6,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
+import { existsSync } from 'fs';
 import { initDatabase } from './db/index.js';
 import { setupGitHubAuth } from './auth/github.js';
 import { setupGoogleAuth } from './auth/google.js';
@@ -100,6 +101,17 @@ app.use(
 
 app.use(cookieParser());
 
+// Load extension early routes (e.g. webhooks needing raw body) before express.json()
+{
+  const _extSetup = resolve(__dirname, '..', '..', 'extensions', 'setup.js');
+  if (existsSync(_extSetup)) {
+    try {
+      const _ext = await import(_extSetup);
+      if (_ext.setupEarlyRoutes) _ext.setupEarlyRoutes(app);
+    } catch (_err) { console.warn('[cloud] Early extension routes skipped:', _err.message); }
+  }
+}
+
 app.use(express.json({ limit: '16kb' }));
 
 // ---------------------------------------------------------------------------
@@ -183,7 +195,7 @@ app.get('*', (req, res) => {
 // ---------------------------------------------------------------------------
 // Initialize database and start server with WebSocket relay
 // ---------------------------------------------------------------------------
-function start() {
+async function start() {
   initDatabase();
 
   // Read latest agent version from the tarball
@@ -215,6 +227,18 @@ function start() {
 
   // Set up the WebSocket relay (handles /ws and /agent-ws upgrade routes)
   const { userAgents, userBrowsers } = setupWebSocketRelay(server, { latestAgentVersion });
+
+  // Load extensions if present (private/cloud-only features)
+  const extensionsDir = resolve(__dirname, '..', '..', 'extensions');
+  if (existsSync(resolve(extensionsDir, 'setup.js'))) {
+    try {
+      const ext = await import(resolve(extensionsDir, 'setup.js'));
+      ext.default({ app, server, userAgents, userBrowsers, publicDir });
+      console.log('[cloud] Extensions loaded');
+    } catch (err) {
+      console.error('[cloud] Failed to load extensions:', err.message);
+    }
+  }
 
   server.listen(config.port, config.host, () => {
     console.log(`[cloud] 49Agents Cloud Server`);

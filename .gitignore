@@ -8,6 +8,7 @@ node_modules/
 cloud/data/
 cloud/dl/
 cloud/public/*.min.js
+extensions/
 
 # Dolt database files (added by bd init)
 .dolt/
