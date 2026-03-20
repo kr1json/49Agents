@@ -5871,11 +5871,14 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
     // Re-attach — agent will re-capture history, send it, then force redraw
     attachTerminal(pane);
 
-    // Clear stale scrollback after history replay + tmux repaint settles.
-    // Without this, history creates baseY>0 which breaks TUI scroll.
+    // Clear stale scrollback after history replay + tmux repaint settles,
+    // but only if a TUI app is running (alternate buffer). Normal shell
+    // terminals keep their scrollback history.
     setTimeout(() => {
       const ti = terminals.get(pane.id);
-      if (ti) ti.xterm.clear();
+      if (ti && ti.xterm.buffer.active === ti.xterm.buffer.alternate) {
+        ti.xterm.clear();
+      }
     }, 1000);
   }
 
@@ -9324,10 +9327,13 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
             }, paneData.agentId);
             // After resize, clear stale scrollback so TUI apps (vim, nano)
             // don't have orphaned history lines that cause scroll-past issues.
-            // The resize message already tells tmux to repaint at the new size.
+            // Only clear if in alternate buffer (TUI running) — normal shell
+            // terminals keep their scrollback history.
             setTimeout(() => {
               const ti = terminals.get(paneData.id);
-              if (ti) ti.xterm.clear();
+              if (ti && ti.xterm.buffer.active === ti.xterm.buffer.alternate) {
+                ti.xterm.clear();
+              }
             }, 500);
           } catch (e) {
             // Ignore fit errors
