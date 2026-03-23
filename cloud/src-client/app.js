@@ -8188,7 +8188,8 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
         return;
       }
 
-      // TUI app has mouse reporting enabled — re-dispatch to xterm's element
+      // TUI app has mouse reporting enabled (htop, opencode, vim with mouse=a)
+      // — re-dispatch to xterm's element so it sends mouse sequences to the app
       if (xterm._core?.coreMouseService?.areMouseEventsActive) {
         const xtermEl = container.querySelector('.xterm-screen');
         if (xtermEl) {
@@ -8199,27 +8200,11 @@ import { WebLinksAddon } from './lib/addon-web-links.mjs';
         return;
       }
 
-      // Calculate scroll amount
+      // Default: scroll through xterm's buffer
       const lines = e.deltaMode === 1
         ? Math.round(e.deltaY * 1.125)
         : Math.round(e.deltaY / 33) || (e.deltaY > 0 ? 1 : -1);
-
-      // Alternate screen + no scrollback = TUI app (vim, nano, less) owns
-      // the screen. Send arrow keys so the app scrolls its own content.
-      // Normal shell (not alternate) always uses scrollLines, even if baseY=0.
-      const isAltScreen = xterm.buffer.active === xterm.buffer.alternate;
-      if (isAltScreen && xterm.buffer.active.baseY === 0) {
-        const count = Math.abs(lines);
-        const arrow = e.deltaY > 0 ? '\x1b[B' : '\x1b[A';
-        const termRef = terminals.get(paneData.id);
-        if (termRef?._attached) {
-          const seq = arrow.repeat(count);
-          const encoded = btoa(unescape(encodeURIComponent(seq)));
-          sendWs('terminal:input', { terminalId: paneData.id, data: encoded }, paneData.agentId);
-        }
-      } else {
-        xterm.scrollLines(lines);
-      }
+      xterm.scrollLines(lines);
     }, { passive: false, capture: true });
 
     // Store terminal info first
