@@ -13,7 +13,7 @@ extensions/
 
 # Dolt database files (added by bd init)
 .dolt/
-*.db
+*.db*
 
 # Deploy scripts (contain server credentials)
 scripts/
