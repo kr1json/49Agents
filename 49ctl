@@ -776,29 +776,19 @@ cmd_dev() {
   fi
   echo -e "  ${GREEN}Cloud started${NC} ${DIM}(PID ${cloud_pid})${NC}"
 
-  # Start agent with isolated config directory (separate token + terminal state)
-  echo -e "  Starting agent (isolated config: ${dev_agent_config})..."
-  TC_CLOUD_URL="ws://localhost:${port}" TC_CONFIG_DIR="$dev_agent_config" \
-    nohup node "$SCRIPT_DIR/agent/bin/49-agent.js" start >> "$dev_agent_log" 2>&1 &
-  local agent_pid=$!
-  echo "$agent_pid" > "$dev_agent_pid"
-  sleep 2
-
-  if ! is_alive "$agent_pid"; then
-    echo -e "  ${RED}Agent failed to start. Check: tail $dev_agent_log${NC}"
-    echo -e "  ${DIM}Cloud is still running — use the browser without an agent, or use ?dev=true${NC}"
-  else
-    echo -e "  ${GREEN}Agent started${NC} ${DIM}(PID ${agent_pid})${NC}"
-  fi
+  # NOTE: Dev mode does NOT start an agent. Two agents on the same machine
+  # both discover the same tmux sessions, causing conflicts. Use ?dev=true
+  # in the browser for the dev panel with dummy panes, or connect your
+  # main agent to this cloud instance temporarily via the browser UI.
 
   echo ""
-  echo -e "${GREEN}${BOLD}Dev instance running!${NC}"
-  echo -e "  URL:     ${CYAN}http://localhost:${port}${NC}"
-  echo -e "  DevPanel: ${CYAN}http://localhost:${port}?dev=true${NC}"
-  echo -e "  Logs:    ${DIM}tail -f $dev_cloud_log $dev_agent_log${NC}"
-  echo -e "  State:   ${DIM}$dev_dir${NC}"
+  echo -e "${GREEN}${BOLD}Dev cloud running!${NC}"
+  echo -e "  URL:      ${CYAN}http://localhost:${port}${NC}"
+  echo -e "  Dev Panel: ${CYAN}http://localhost:${port}?dev=true${NC}"
+  echo -e "  Logs:     ${DIM}tail -f $dev_cloud_log${NC}"
+  echo -e "  DB:       ${DIM}$dev_db${NC}"
   echo ""
-  echo -e "  ${DIM}This instance is fully isolated from your main install.${NC}"
+  echo -e "  ${DIM}No agent started — use ?dev=true for dummy panes.${NC}"
   echo -e "  ${DIM}Stop with: ./49ctl dev-stop ${port}${NC}"
   echo ""
 }
