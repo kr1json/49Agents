@@ -1754,6 +1754,9 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
       }
       if (prefs.focusMode) {
         focusMode = prefs.focusMode;
+      } else if (matchMedia('(pointer: coarse)').matches) {
+        // Touch-primary device with no saved preference: default to click focus
+        focusMode = 'click';
       }
       if (prefs.hudState) {
         hudExpanded = !!prefs.hudState.fleet_expanded;
@@ -10124,6 +10127,10 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
     setupCanvasInteraction();
     setupPasteHandlers();
     setupKeyboardShortcuts();
+
+    // Prevent Safari's native pinch-to-zoom (bypasses touch-action: none)
+    document.addEventListener('gesturestart', e => e.preventDefault());
+    document.addEventListener('gesturechange', e => e.preventDefault());
   }
 
   // Handle canvas pan start (mouse)
