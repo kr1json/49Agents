@@ -49,7 +49,7 @@ let gitGraphsCache = loadGitGraphs();
  * Fetch structured git graph data for a local repository (async).
  * Returns commit objects with parent hashes so the client can render an SVG graph.
  */
-async function fetchGraphData(repoPath, maxCommits = 50) {
+async function fetchGraphData(repoPath, maxCommits = 50, { ascii = false } = {}) {
   validateWorkingDirectory(resolve(repoPath));
   const opts = { cwd: repoPath, encoding: 'utf-8', timeout: 15000 };
   // Use a delimiter unlikely to appear in commit messages
@@ -58,13 +58,20 @@ async function fetchGraphData(repoPath, maxCommits = 50) {
   try {
     await execAsync('git rev-parse --is-inside-work-tree', opts);
 
-    const [branchResult, stagedResult, unstagedResult, untrackedResult, logResult] = await Promise.all([
+    const queries = [
       execAsync('git branch --show-current', opts),
       execAsync('git diff --cached --name-only', opts),
       execAsync('git diff --name-only', opts),
       execAsync('git ls-files --others --exclude-standard', opts),
       execAsync(`git log --all --topo-order --format="${fmt}" -n ${maxCommits}`, opts).catch(() => ({ stdout: '' })),
-    ]);
+    ];
+    // ASCII mode: also fetch git's own graph output
+    if (ascii) {
+      queries.push(
+        execAsync(`git log --all --graph --oneline --decorate --color=never -n ${maxCommits}`, opts).catch(() => ({ stdout: '' }))
+      );
+    }
+    const [branchResult, stagedResult, unstagedResult, untrackedResult, logResult, asciiResult] = await Promise.all(queries);
 
     const branch = branchResult.stdout.trim();
     const staged = stagedResult.stdout.trim().split('\n').filter(Boolean).length;
@@ -88,7 +95,7 @@ async function fetchGraphData(repoPath, maxCommits = 50) {
       });
     }
 
-    return {
+    const result = {
       branch,
       uncommitted: { total, staged, unstaged, untracked },
       clean: total === 0,
@@ -96,6 +103,10 @@ async function fetchGraphData(repoPath, maxCommits = 50) {
       repoPath,
       timestamp: Date.now()
     };
+    if (ascii && asciiResult) {
+      result.asciiGraph = asciiResult.stdout;
+    }
+    return result;
   } catch (error) {
     return {
       error: error.message,

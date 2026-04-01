@@ -14,16 +14,6 @@ const GG = {
   COLORS: ['#85e89d','#79b8ff','#b392f0','#ffab70','#f97583','#4ec9b0','#d1bcf9','#ffd33d'],
 };
 
-// ── ASCII Graph Characters ──
-const ASCII = {
-  NODE: '*',
-  VERT: '|',
-  MERGE_RIGHT: '\\',
-  MERGE_LEFT: '/',
-  HORIZ: '_',
-  EMPTY: ' ',
-};
-
 export function renderGitGraphPane(paneData) {
   const existingPane = document.getElementById(`pane-${paneData.id}`);
   if (existingPane) existingPane.remove();
@@ -296,89 +286,63 @@ export function renderSvgGitGraph(outputEl, commits, currentBranch) {
     </div>`;
 }
 
-export function renderAsciiGitGraph(outputEl, commits, currentBranch) {
-  if (!commits || commits.length === 0) {
-    outputEl.innerHTML = '<span class="git-graph-loading">No commits found</span>';
+export function renderAsciiGitGraph(outputEl, asciiGraph, commits) {
+  if (!asciiGraph) {
+    outputEl.innerHTML = '<span class="git-graph-loading">No graph data</span>';
     return;
   }
 
-  const { lanes, maxLane, branchColors } = assignLanes(commits);
-  const totalLanes = maxLane + 1;
+  // Build lookup from hash -> commit for enrichment
+  const commitMap = new Map();
+  if (commits) commits.forEach(c => commitMap.set(c.hash, c));
 
-  // Build the active lanes state to draw continuation lines
-  const activeLanes = new Array(totalLanes).fill(null);
-  const hashIndex = new Map();
-  commits.forEach((c, i) => hashIndex.set(c.hash, i));
+  // Determine lane colors: use assignLanes if commits available
+  let laneColors = null;
+  if (commits && commits.length > 0) {
+    const { lanes, branchColors } = assignLanes(commits);
+    laneColors = { lanes, branchColors };
+  }
 
-  const rowsHtml = commits.map((commit, i) => {
-    const lane = lanes.get(commit.hash);
-    const colorIdx = branchColors.get(lane) ?? 1;
-    const color = GG.COLORS[colorIdx];
-    const timeStr = commit.timestamp ? gitRelativeTime(commit.timestamp) : '';
+  const lines = asciiGraph.split('\n').filter(l => l.length > 0);
 
-    // Build ASCII graph columns for this row
-    const cols = [];
-    for (let l = 0; l < totalLanes; l++) {
-      if (l === lane) {
-        cols.push({ char: ASCII.NODE, color });
-      } else if (activeLanes[l] !== null) {
-        const laneColor = GG.COLORS[branchColors.get(l) ?? 1];
-        cols.push({ char: ASCII.VERT, color: laneColor });
-      } else {
-        cols.push({ char: ASCII.EMPTY, color: null });
+  const rowsHtml = lines.map(line => {
+    // git log --graph --oneline produces: "graph_part hash (refs) subject"
+    // Split into graph portion and text portion at the first hash match
+    const hashMatch = line.match(/^([*|/\\ _.\-\s]+?)([a-f0-9]{7,})\s/);
+
+    if (!hashMatch) {
+      // Connector-only line (no commit on this line)
+      const graphPart = escapeHtml(line);
+      const colored = colorizeGraphChars(graphPart, laneColors, null);
+      return `<div class="gg-row gg-ascii-row" style="height:${GG.ROW_H}px"><span class="gg-ascii-graph">${colored}</span></div>`;
+    }
+
+    const graphPart = hashMatch[1];
+    const hash = hashMatch[2];
+    const rest = line.slice(hashMatch[0].length - 1).slice(hash.length).trim();
+    const commit = commitMap.get(hash);
+
+    // Colorize graph characters
+    const coloredGraph = colorizeGraphChars(escapeHtml(graphPart), laneColors, hash);
+
+    // Get lane color for the hash
+    let hashColor = '#79b8ff';
+    if (laneColors && commit) {
+      const lane = laneColors.lanes.get(hash);
+      if (lane !== undefined) {
+        const colorIdx = laneColors.branchColors.get(lane) ?? 1;
+        hashColor = GG.COLORS[colorIdx];
       }
     }
 
-    // Build merge lines: if this commit has parents in other lanes, show merge chars
-    // between the node and the parent lane
-    const mergeOverrides = new Map();
-    for (const parentHash of commit.parents) {
-      const parentLane = lanes.get(parentHash);
-      if (parentLane === undefined || parentLane === lane) continue;
-      const mergeChar = parentLane > lane ? ASCII.MERGE_RIGHT : ASCII.MERGE_LEFT;
-      const mergeColor = GG.COLORS[branchColors.get(parentLane) ?? 1];
-      const lo = Math.min(lane, parentLane);
-      const hi = Math.max(lane, parentLane);
-      for (let l = lo + 1; l < hi; l++) {
-        if (cols[l].char === ASCII.EMPTY) {
-          mergeOverrides.set(l, { char: ASCII.HORIZ, color: mergeColor });
-        }
-      }
-      if (cols[parentLane].char !== ASCII.NODE) {
-        mergeOverrides.set(parentLane, { char: mergeChar, color: mergeColor });
-      }
-    }
+    // Time
+    const timeStr = commit?.timestamp ? gitRelativeTime(commit.timestamp) : '';
 
-    // Apply merge overrides
-    for (const [l, v] of mergeOverrides) {
-      cols[l] = v;
-    }
-
-    // Update active lanes for next row
-    activeLanes[lane] = null;
-    if (commit.parents.length > 0) {
-      const firstParent = commit.parents[0];
-      if (hashIndex.has(firstParent) && !lanes.has(firstParent)) {
-        // not yet assigned — will continue in this lane
-      }
-      activeLanes[lane] = firstParent;
-      for (let p = 1; p < commit.parents.length; p++) {
-        const ph = commit.parents[p];
-        const pl = lanes.get(ph);
-        if (pl !== undefined) activeLanes[pl] = ph;
-      }
-    }
-
-    // Render graph portion as colored spans
-    const graphHtml = cols.map(c => {
-      if (c.char === ASCII.EMPTY) return ' ';
-      return `<span style="color:${c.color}">${c.char}</span>`;
-    }).join('');
-
-    // Refs
+    // Refs from commit data (more reliable than parsing the oneline)
     let refsHtml = '';
-    if (commit.refs) {
-      const refParts = commit.refs.split(',').map(r => r.trim()).filter(Boolean);
+    const refSrc = commit?.refs || '';
+    if (refSrc) {
+      const refParts = refSrc.split(',').map(r => r.trim()).filter(Boolean);
       for (const ref of refParts) {
         if (ref.startsWith('HEAD -> ')) {
           refsHtml += `<span class="gg-ref gg-ref-head">${escapeHtml(ref.replace('HEAD -> ', ''))}</span>`;
@@ -392,14 +356,20 @@ export function renderAsciiGitGraph(outputEl, commits, currentBranch) {
       }
     }
 
+    // Subject: strip the (refs) decoration from git's oneline output
+    const subject = commit?.subject || rest.replace(/\([^)]*\)\s*/, '').trim();
+
+    // Author
+    const authorHtml = commit?.author ? `<span class="gg-author">${escapeHtml(commit.author)}</span>` : '';
+
     return `<div class="gg-row gg-ascii-row" style="height:${GG.ROW_H}px">
-      <span class="gg-ascii-graph">${graphHtml} </span>
+      <span class="gg-ascii-graph">${coloredGraph}</span>
       <span class="gg-info">
-        <span class="gg-hash" style="color:${color}">${commit.hash}</span>
+        <span class="gg-hash" style="color:${hashColor}">${hash}</span>
         <span class="gg-time">${timeStr}</span>
         ${refsHtml}
-        <span class="gg-subject">${escapeHtml(commit.subject || '')}</span>
-        <span class="gg-author">${escapeHtml(commit.author || '')}</span>
+        <span class="gg-subject">${escapeHtml(subject)}</span>
+        ${authorHtml}
       </span>
     </div>`;
   }).join('');
@@ -407,11 +377,43 @@ export function renderAsciiGitGraph(outputEl, commits, currentBranch) {
   outputEl.innerHTML = `<div class="gg-scroll-container gg-ascii-container">${rowsHtml}</div>`;
 }
 
+// Colorize ASCII graph chars (* | / \) using lane colors
+function colorizeGraphChars(graphStr, laneColors, commitHash) {
+  // Color the graph symbols: * gets commit color, | / \ get lane position colors
+  const graphChars = ['*', '|', '/', '\\', '_'];
+  let result = '';
+  let col = 0;
+  for (let i = 0; i < graphStr.length; i++) {
+    const ch = graphStr[i];
+    if (graphChars.includes(ch)) {
+      // Estimate lane from column position
+      const laneIdx = Math.floor(col / 2);
+      let color = GG.COLORS[laneIdx % GG.COLORS.length];
+
+      // If we have lane data and this is the commit node, use the actual lane color
+      if (ch === '*' && commitHash && laneColors) {
+        const lane = laneColors.lanes.get(commitHash);
+        if (lane !== undefined) {
+          const colorIdx = laneColors.branchColors.get(lane) ?? 1;
+          color = GG.COLORS[colorIdx];
+        }
+      }
+
+      result += `<span style="color:${color}">${ch}</span>`;
+    } else {
+      result += ch;
+    }
+    col++;
+  }
+  return result;
+}
+
 export async function fetchGitGraphData(paneEl, paneData) {
   try {
     const outputEl = paneEl.querySelector('.git-graph-output');
     const maxCommits = 200;
-    const data = await _ctx.agentRequest('GET', `/api/git-graphs/${paneData.id}/data?maxCommits=${maxCommits}`, null, paneData.agentId);
+    const modeParam = paneData.graphMode === 'ascii' ? '&mode=ascii' : '';
+    const data = await _ctx.agentRequest('GET', `/api/git-graphs/${paneData.id}/data?maxCommits=${maxCommits}${modeParam}`, null, paneData.agentId);
 
     const branchEl = paneEl.querySelector('.git-graph-branch');
     const statusEl = paneEl.querySelector('.git-graph-status');
@@ -436,8 +438,8 @@ export async function fetchGitGraphData(paneEl, paneData) {
     }
 
     if (data.commits) {
-      if (paneData.graphMode === 'ascii') {
-        renderAsciiGitGraph(outputEl, data.commits, data.branch);
+      if (paneData.graphMode === 'ascii' && data.asciiGraph) {
+        renderAsciiGitGraph(outputEl, data.asciiGraph, data.commits);
       } else {
         renderSvgGitGraph(outputEl, data.commits, data.branch);
       }

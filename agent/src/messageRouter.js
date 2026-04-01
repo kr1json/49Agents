@@ -559,7 +559,8 @@ export function createMessageRouter(sendToRelay, options = {}) {
         const gitGraph = gitGraphService.getGitGraph(id);
         if (!gitGraph) return respond(404, { error: 'Git graph pane not found' });
         const maxCommits = parseInt(query.maxCommits) || 50;
-        const data = await gitGraphService.fetchGraphData(gitGraph.repoPath, maxCommits);
+        const ascii = query.mode === 'ascii';
+        const data = await gitGraphService.fetchGraphData(gitGraph.repoPath, maxCommits, { ascii });
         return respond(200, data);
       }
 
