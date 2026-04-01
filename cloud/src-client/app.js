@@ -9193,6 +9193,62 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
     });
   }
 
+  // Auto-arrange panes in a single column for mobile viewports
+  function autoArrangePanes() {
+    const margin = 16;
+    const paneWidth = (window.innerWidth / state.zoom) - margin * 2;
+    const paneHeight = 300;
+    const gap = 12;
+    let y = margin;
+
+    // Sort same as nav drawer: shortcut number, then position
+    const sorted = [...state.panes].sort((a, b) => {
+      const aNum = a.shortcutNumber || 99;
+      const bNum = b.shortcutNumber || 99;
+      if (aNum !== bNum) return aNum - bNum;
+      if (a.y !== b.y) return a.y - b.y;
+      return a.x - b.x;
+    });
+
+    sorted.forEach(p => {
+      p.x = margin;
+      p.y = y;
+      p.width = paneWidth;
+      p.height = paneHeight;
+      y += paneHeight + gap;
+
+      const el = document.getElementById(`pane-${p.id}`);
+      if (el) {
+        el.style.left = p.x + 'px';
+        el.style.top = p.y + 'px';
+        el.style.width = p.width + 'px';
+        el.style.height = p.height + 'px';
+      }
+
+      // Refit terminals
+      const termInfo = terminals.get(p.id);
+      if (termInfo) {
+        try { termInfo.fitAddon.fit(); } catch (_) {}
+      }
+
+      // Refit Monaco editors
+      const editorInfo = fileEditors.get(p.id);
+      if (editorInfo && editorInfo.editor) editorInfo.editor.layout();
+      const noteInfo = noteEditors.get(p.id);
+      if (noteInfo && noteInfo.monacoEditor) noteInfo.monacoEditor.layout();
+
+      cloudSaveLayout(p);
+    });
+
+    // Reset zoom/pan to show top of column
+    state.zoom = 1;
+    state.panX = 0;
+    state.panY = 0;
+    updateCanvasTransform();
+    saveViewState();
+    renderMinimap();
+  }
+
   // Mobile pane navigation drawer (bottom sheet)
   function setupMobileNavDrawer() {
     // Only create on mobile-width screens
@@ -9233,10 +9289,17 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
       // Sheet
       const sheet = document.createElement('div');
       sheet.className = 'mobile-nav-sheet';
-      sheet.innerHTML = '<div class="mobile-nav-handle"></div><div class="mobile-nav-title">Panes</div><div class="mobile-nav-list"></div>';
+      sheet.innerHTML = '<div class="mobile-nav-handle"></div><div style="display:flex;align-items:center;justify-content:space-between;padding:0 16px 8px;"><div class="mobile-nav-title" style="padding:0;">Panes</div><button class="mobile-nav-arrange-btn" style="background:rgba(218,119,86,0.15);border:1px solid rgba(218,119,86,0.3);color:rgba(218,119,86,0.9);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;">Arrange</button></div><div class="mobile-nav-list"></div>';
       document.body.appendChild(sheet);
 
       const list = sheet.querySelector('.mobile-nav-list');
+      const arrangeBtn = sheet.querySelector('.mobile-nav-arrange-btn');
+      if (arrangeBtn) {
+        arrangeBtn.addEventListener('click', () => {
+          closeDrawer();
+          autoArrangePanes();
+        });
+      }
 
       // Sort: shortcut number first (1-9), then by position (left-to-right, top-to-bottom)
       const sorted = [...state.panes].sort((a, b) => {
