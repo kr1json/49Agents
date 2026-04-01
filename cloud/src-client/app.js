@@ -7710,10 +7710,9 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
       focusTerminalInput(paneData.id);
     }, { passive: true, capture: true });
 
-    // Auto-fullscreen terminal panes on phone tap
+    // Auto-fullscreen panes on phone tap (all pane types)
     paneEl.addEventListener('touchend', (e) => {
       if (window.innerWidth > 768) return;
-      if (paneData.type !== 'terminal') return;
       if (expandedPaneId) return;
       if (quickViewActive || deviceHoverActive) return;
       const touch = e.changedTouches && e.changedTouches[0];
