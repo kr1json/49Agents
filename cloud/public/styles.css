@@ -5870,3 +5870,192 @@ body.cursor-suppressed .pane { pointer-events: none !important; }
   color: rgba(34, 211, 238, 0.85);
 }
 
+/* Conversations Detail View */
+.convos-detail {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.convos-detail-actionbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.02);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.convos-back-btn {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.5);
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+}
+.convos-back-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
+
+.convos-detail-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.convos-action-btn {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.65);
+  cursor: pointer;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.convos-action-btn:hover { background: rgba(255,255,255,0.12); color: #fff; border-color: rgba(255,255,255,0.15); }
+.convos-action-btn.disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+
+.convos-btn-open-claude:hover { border-color: rgba(74, 222, 128, 0.4); color: rgba(74, 222, 128, 0.9); }
+.convos-btn-extract:hover { border-color: rgba(96, 165, 250, 0.4); color: rgba(96, 165, 250, 0.9); }
+
+.convos-detail-header {
+  padding: 10px 12px 6px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.convos-detail-title {
+  color: rgba(255,255,255,0.9);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  flex: 1;
+  word-break: break-word;
+}
+
+.convos-detail-meta {
+  padding: 0 12px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  flex-shrink: 0;
+}
+
+.convos-detail-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 11px;
+}
+
+.convos-detail-label {
+  color: rgba(255,255,255,0.3);
+  min-width: 70px;
+  flex-shrink: 0;
+}
+
+.convos-detail-value {
+  color: rgba(255,255,255,0.6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  user-select: text;
+}
+
+.convos-detail-messages {
+  overflow-y: auto;
+  flex: 1;
+  padding: 8px 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+
+.convos-message {
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.convos-message-user { border-left: 2px solid rgba(96, 165, 250, 0.4); }
+.convos-message-assistant { border-left: 2px solid rgba(232, 168, 130, 0.4); }
+
+.convos-message-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+.convos-message-role {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.convos-message-user .convos-message-role { color: rgba(96, 165, 250, 0.8); }
+.convos-message-assistant .convos-message-role { color: rgba(232, 168, 130, 0.8); }
+
+.convos-message-time {
+  font-size: 10px;
+  color: rgba(255,255,255,0.2);
+}
+
+.convos-message-text {
+  font-size: 12px;
+  color: rgba(255,255,255,0.6);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow: hidden;
+}
+
+/* Format Picker Dropdown */
+.convos-format-picker {
+  position: absolute;
+  top: 100%;
+  right: 10px;
+  background: rgba(20, 20, 40, 0.98);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  padding: 4px;
+  z-index: 100;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  min-width: 180px;
+}
+
+.convos-format-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.7);
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  text-align: left;
+}
+.convos-format-option:hover { background: rgba(255,255,255,0.08); color: #fff; }
+
+.convos-format-icon {
+  font-family: monospace;
+  font-size: 11px;
+  color: rgba(255,255,255,0.35);
+  min-width: 18px;
+  text-align: center;
+}
+

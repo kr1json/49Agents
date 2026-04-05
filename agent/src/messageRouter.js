@@ -705,6 +705,32 @@ export function createMessageRouter(sendToRelay, options = {}) {
         return respond(200, { conversations, dirPath: convosPane.dirPath, depth, timestamp: Date.now() });
       }
 
+      // GET /api/conversations-panes/:id/detail?sessionId=X
+      const convosDetailMatch = path.match(/^\/api\/conversations-panes\/([^/]+)\/detail$/);
+      if (convosDetailMatch && method === 'GET') {
+        const id = convosDetailMatch[1];
+        const convosPane = conversationsService.getConversationsPane(id);
+        if (!convosPane) return respond(404, { error: 'Conversations pane not found' });
+        const sessionId = query.sessionId;
+        if (!sessionId) return respond(400, { error: 'sessionId required' });
+        const detail = await conversationsService.fetchConversationDetail(convosPane.dirPath, sessionId);
+        return respond(200, detail);
+      }
+
+      // GET /api/conversations-panes/:id/extract?sessionId=X&format=Y
+      const convosExtractMatch = path.match(/^\/api\/conversations-panes\/([^/]+)\/extract$/);
+      if (convosExtractMatch && method === 'GET') {
+        const id = convosExtractMatch[1];
+        const convosPane = conversationsService.getConversationsPane(id);
+        if (!convosPane) return respond(404, { error: 'Conversations pane not found' });
+        const sessionId = query.sessionId;
+        const format = query.format || 'markdown';
+        if (!sessionId) return respond(400, { error: 'sessionId required' });
+        const result = await conversationsService.extractConversation(convosPane.dirPath, sessionId, format);
+        if (result.error) return respond(404, result);
+        return respond(200, result);
+      }
+
       const convosPaneMatch = path.match(/^\/api\/conversations-panes\/([^/]+)$/);
       if (convosPaneMatch) {
         const id = convosPaneMatch[1];

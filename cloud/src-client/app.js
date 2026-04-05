@@ -9302,6 +9302,8 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
           ${metaHtml ? `<div class="convos-item-meta">${metaHtml}</div>` : ''}
         `;
 
+        item.style.cursor = 'pointer';
+        item.addEventListener('click', () => showConversationDetail(pane, paneData, convo, isActive, claudeState));
         item.addEventListener('mouseenter', () => { item.style.background = 'rgba(var(--accent-rgb),0.1)'; });
         item.addEventListener('mouseleave', () => { item.style.background = ''; });
 
@@ -9318,6 +9320,240 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
     } catch (e) {
       console.error('[App] Failed to fetch conversations:', e);
       listEl.innerHTML = `<div class="convos-error">Failed to load: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  async function showConversationDetail(pane, paneData, convo, isActive, claudeState) {
+    // Hide toolbar and list, show detail view
+    const toolbar = pane.querySelector('.convos-toolbar');
+    const listEl = pane.querySelector('.convos-list');
+    if (toolbar) toolbar.style.display = 'none';
+    if (listEl) listEl.style.display = 'none';
+
+    // Remove existing detail view if any
+    const existingDetail = pane.querySelector('.convos-detail');
+    if (existingDetail) existingDetail.remove();
+
+    const detail = document.createElement('div');
+    detail.className = 'convos-detail';
+
+    const title = convo.customTitle || convo.firstPrompt || convo.sessionId.slice(0, 8);
+
+    // Status indicator for active sessions
+    let statusBadge = '';
+    if (isActive) {
+      const stateClass = claudeState === 'working' ? 'working' : (claudeState === 'idle' ? 'idle' : 'active');
+      const stateLabel = claudeState === 'working' ? 'Working' : (claudeState === 'idle' ? 'Idle' : (claudeState === 'permission_needed' ? 'Needs Input' : 'Active'));
+      statusBadge = `<span class="convos-status convos-status-${stateClass}">${stateLabel}</span>`;
+    }
+
+    detail.innerHTML = `
+      <div class="convos-detail-actionbar">
+        <button class="convos-back-btn" title="Back to list">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div class="convos-detail-actions">
+          <button class="convos-action-btn convos-btn-open-claude" title="Open in Claude (resume session)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M6 8l4 4-4 4"/><line x1="12" y1="16" x2="18" y2="16"/></svg>
+            Resume
+          </button>
+          <button class="convos-action-btn convos-btn-extract" title="Extract conversation">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Extract
+          </button>
+          <button class="convos-action-btn convos-btn-summarize disabled" title="Summarize (coming soon)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="10" x2="16" y2="10"/><line x1="4" y1="14" x2="12" y2="14"/><line x1="4" y1="18" x2="8" y2="18"/></svg>
+            Summarize
+          </button>
+        </div>
+      </div>
+      <div class="convos-detail-header">
+        <div class="convos-detail-title">${escapeHtml(title.length > 120 ? title.slice(0, 120) + '...' : title)}</div>
+        ${statusBadge}
+      </div>
+      <div class="convos-detail-meta">
+        <div class="convos-detail-meta-row"><span class="convos-detail-label">Session</span><span class="convos-detail-value">${escapeHtml(convo.sessionId)}</span></div>
+        ${convo.cwd ? `<div class="convos-detail-meta-row"><span class="convos-detail-label">Directory</span><span class="convos-detail-value">${escapeHtml(convo.cwd)}</span></div>` : ''}
+        ${convo.gitBranch && convo.gitBranch !== 'HEAD' ? `<div class="convos-detail-meta-row"><span class="convos-detail-label">Branch</span><span class="convos-detail-value"><span class="convos-meta-tag convos-tag-branch">${escapeHtml(convo.gitBranch)}</span></span></div>` : ''}
+        ${convo.beadsIssueId ? `<div class="convos-detail-meta-row"><span class="convos-detail-label">Beads</span><span class="convos-detail-value"><span class="convos-meta-tag convos-tag-beads">${escapeHtml(convo.beadsIssueId)}</span></span></div>` : ''}
+        ${convo.worktree ? `<div class="convos-detail-meta-row"><span class="convos-detail-label">Worktree</span><span class="convos-detail-value"><span class="convos-meta-tag convos-tag-worktree">${escapeHtml(convo.worktree)}</span></span></div>` : ''}
+        <div class="convos-detail-meta-row"><span class="convos-detail-label">Last active</span><span class="convos-detail-value">${new Date(convo.lastModified).toLocaleString()}</span></div>
+        <div class="convos-detail-meta-row"><span class="convos-detail-label">Created</span><span class="convos-detail-value">${new Date(convo.createdAt).toLocaleString()}</span></div>
+        <div class="convos-detail-meta-row"><span class="convos-detail-label">Size</span><span class="convos-detail-value">${(convo.fileSize / 1024).toFixed(1)} KB</span></div>
+      </div>
+      <div class="convos-detail-messages">
+        <div class="convos-loading">Loading messages...</div>
+      </div>
+    `;
+
+    // Insert before resize handle
+    const resizeHandle = pane.querySelector('.pane-resize-handle');
+    pane.insertBefore(detail, resizeHandle);
+
+    // Back button
+    detail.querySelector('.convos-back-btn').addEventListener('click', () => {
+      detail.remove();
+      if (toolbar) toolbar.style.display = '';
+      if (listEl) listEl.style.display = '';
+    });
+
+    // Open in Claude button
+    detail.querySelector('.convos-btn-open-claude').addEventListener('click', async () => {
+      try {
+        const terminal = await agentRequest('POST', '/api/terminals', {
+          workingDir: convo.cwd || '~',
+        }, paneData.agentId);
+
+        // Create the terminal pane
+        const tPane = {
+          id: terminal.id,
+          type: 'terminal',
+          x: paneData.x + paneData.width + 20,
+          y: paneData.y,
+          width: PANE_DEFAULTS['terminal'].width,
+          height: PANE_DEFAULTS['terminal'].height,
+          zIndex: state.nextZIndex++,
+          tmuxSession: terminal.tmuxSession,
+          device: paneData.device || null,
+          agentId: paneData.agentId,
+        };
+        state.panes.push(tPane);
+        renderPane(tPane);
+        cloudSaveLayout(tPane);
+
+        // Send the resume command after a short delay to let the terminal initialize
+        setTimeout(() => {
+          const cmd = `claude --resume ${convo.sessionId}\n`;
+          sendWs('terminal:input', { terminalId: terminal.id, data: btoa(cmd) }, paneData.agentId);
+        }, 800);
+      } catch (e) {
+        console.error('[Conversations] Failed to open in Claude:', e);
+        alert('Failed to open terminal: ' + e.message);
+      }
+    });
+
+    // Extract button
+    detail.querySelector('.convos-btn-extract').addEventListener('click', () => {
+      showExtractFormatPicker(detail, paneData, convo);
+    });
+
+    // Summarize button (placeholder)
+    detail.querySelector('.convos-btn-summarize').addEventListener('click', () => {
+      // Not wired yet
+    });
+
+    // Fetch message details
+    try {
+      const detailData = await agentRequest('GET',
+        `/api/conversations-panes/${paneData.id}/detail?sessionId=${encodeURIComponent(convo.sessionId)}`,
+        null, paneData.agentId);
+
+      const messagesEl = detail.querySelector('.convos-detail-messages');
+      if (!messagesEl) return;
+
+      const messages = detailData.messages || [];
+      if (messages.length === 0) {
+        messagesEl.innerHTML = '<div class="convos-empty">No messages found.</div>';
+        return;
+      }
+
+      messagesEl.innerHTML = '';
+      // Show up to 50 messages to avoid DOM overload
+      const displayMessages = messages.slice(0, 50);
+      for (const msg of displayMessages) {
+        const msgEl = document.createElement('div');
+        msgEl.className = `convos-message convos-message-${msg.role}`;
+        const roleLabel = msg.role === 'user' ? 'You' : 'Claude';
+        const timeStr = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : '';
+        const textPreview = msg.text.length > 500 ? msg.text.slice(0, 500) + '...' : msg.text;
+        msgEl.innerHTML = `
+          <div class="convos-message-header">
+            <span class="convos-message-role">${roleLabel}</span>
+            ${timeStr ? `<span class="convos-message-time">${timeStr}</span>` : ''}
+          </div>
+          <div class="convos-message-text">${escapeHtml(textPreview)}</div>
+        `;
+        messagesEl.appendChild(msgEl);
+      }
+      if (messages.length > 50) {
+        const moreEl = document.createElement('div');
+        moreEl.className = 'convos-empty';
+        moreEl.textContent = `... and ${messages.length - 50} more messages. Extract to see all.`;
+        messagesEl.appendChild(moreEl);
+      }
+    } catch (e) {
+      const messagesEl = detail.querySelector('.convos-detail-messages');
+      if (messagesEl) {
+        messagesEl.innerHTML = `<div class="convos-error">Failed to load messages: ${escapeHtml(e.message)}</div>`;
+      }
+    }
+  }
+
+  function showExtractFormatPicker(detailEl, paneData, convo) {
+    // Remove existing picker if any
+    const existing = detailEl.querySelector('.convos-format-picker');
+    if (existing) { existing.remove(); return; }
+
+    const picker = document.createElement('div');
+    picker.className = 'convos-format-picker';
+
+    const formats = [
+      { id: 'markdown', label: 'Markdown (.md)', icon: 'M' },
+      { id: 'json', label: 'JSON (.json)', icon: '{}' },
+      { id: 'jsonl', label: 'Raw JSONL (.jsonl)', icon: '[]' },
+    ];
+
+    for (const fmt of formats) {
+      const btn = document.createElement('button');
+      btn.className = 'convos-format-option';
+      btn.setAttribute('data-nav-item', '');
+      btn.innerHTML = `<span class="convos-format-icon">${fmt.icon}</span> ${fmt.label}`;
+      btn.addEventListener('click', async () => {
+        picker.remove();
+        await downloadConversation(paneData, convo, fmt.id);
+      });
+      picker.appendChild(btn);
+    }
+
+    // Position near the extract button
+    const extractBtn = detailEl.querySelector('.convos-btn-extract');
+    const actionbar = detailEl.querySelector('.convos-detail-actionbar');
+    actionbar.appendChild(picker);
+
+    // Close on outside click
+    const closeHandler = (e) => {
+      if (!picker.contains(e.target) && e.target !== extractBtn) {
+        picker.remove();
+        document.removeEventListener('click', closeHandler, true);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', closeHandler, true), 0);
+  }
+
+  async function downloadConversation(paneData, convo, format) {
+    try {
+      const data = await agentRequest('GET',
+        `/api/conversations-panes/${paneData.id}/extract?sessionId=${encodeURIComponent(convo.sessionId)}&format=${format}`,
+        null, paneData.agentId);
+
+      if (data.error) {
+        alert('Extract failed: ' + data.error);
+        return;
+      }
+
+      // Trigger browser download
+      const blob = new Blob([data.content], { type: data.mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = data.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('[Conversations] Extract failed:', e);
+      alert('Failed to extract conversation: ' + e.message);
     }
   }
 

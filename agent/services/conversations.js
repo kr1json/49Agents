@@ -1,6 +1,6 @@
 import { homedir } from 'os';
 import { join, basename } from 'path';
-import { readdir, stat, open as fsOpen } from 'fs/promises';
+import { readdir, stat, open as fsOpen, readFile as readFileAsync } from 'fs/promises';
 import { randomUUID } from 'crypto';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { config } from '../src/config.js';
@@ -284,6 +284,195 @@ async function extractMetadata(filePath, fileStat) {
   return metadata;
 }
 
+/**
+ * Fetch detailed conversation data: all user and assistant messages.
+ * Used for the detail view.
+ */
+async function fetchConversationDetail(dirPath, sessionId) {
+  const targetKey = pathToProjectKey(dirPath);
+  let transcriptPath = null;
+
+  try {
+    const allDirs = await readdir(CLAUDE_PROJECTS_DIR);
+    for (const dir of allDirs) {
+      if (dir === targetKey || dir.startsWith(targetKey + '-')) {
+        const candidate = join(CLAUDE_PROJECTS_DIR, dir, `${sessionId}.jsonl`);
+        try {
+          await stat(candidate);
+          transcriptPath = candidate;
+          break;
+        } catch {}
+      }
+    }
+  } catch {}
+
+  if (!transcriptPath) {
+    // Fallback: search all project dirs
+    try {
+      const allDirs = await readdir(CLAUDE_PROJECTS_DIR);
+      for (const dir of allDirs) {
+        const candidate = join(CLAUDE_PROJECTS_DIR, dir, `${sessionId}.jsonl`);
+        try {
+          await stat(candidate);
+          transcriptPath = candidate;
+          break;
+        } catch {}
+      }
+    } catch {}
+  }
+
+  if (!transcriptPath) return { error: 'Conversation not found' };
+
+  const fileStat = await stat(transcriptPath);
+  const content = await readFileAsync(transcriptPath, 'utf8');
+  const lines = content.split('\n').filter(l => l.trim());
+
+  const messages = [];
+  let customTitle = null;
+  let cwd = null;
+  let gitBranch = null;
+
+  for (const line of lines) {
+    try {
+      const obj = JSON.parse(line);
+
+      if (!cwd && obj.cwd) cwd = obj.cwd;
+      if (!gitBranch && obj.gitBranch) gitBranch = obj.gitBranch;
+      if (obj.type === 'custom-title' && obj.customTitle) customTitle = obj.customTitle;
+
+      if (obj.type === 'user' && obj.message && !obj.isMeta) {
+        const content = obj.message.content;
+        let text = null;
+        if (typeof content === 'string') text = content.trim();
+        else if (Array.isArray(content)) {
+          const texts = [];
+          for (const block of content) {
+            if (block.type === 'text' && block.text) {
+              const t = block.text.trim();
+              if (t && !t.startsWith('<')) texts.push(t);
+            }
+          }
+          text = texts.join('\n');
+        }
+        if (text) {
+          messages.push({
+            role: 'user',
+            text,
+            timestamp: obj.timestamp || null,
+          });
+        }
+      }
+
+      if (obj.type === 'assistant' && obj.message) {
+        const content = obj.message.content;
+        let text = null;
+        if (typeof content === 'string') text = content.trim();
+        else if (Array.isArray(content)) {
+          const texts = [];
+          for (const block of content) {
+            if (block.type === 'text' && block.text) texts.push(block.text.trim());
+          }
+          text = texts.join('\n');
+        }
+        if (text) {
+          messages.push({
+            role: 'assistant',
+            text: text.slice(0, 2000),
+            timestamp: obj.timestamp || null,
+          });
+        }
+      }
+    } catch {}
+  }
+
+  return {
+    sessionId,
+    customTitle,
+    cwd,
+    gitBranch,
+    messages,
+    messageCount: messages.length,
+    fileSize: fileStat.size,
+    createdAt: fileStat.birthtime?.toISOString() || fileStat.ctime.toISOString(),
+    lastModified: fileStat.mtime.toISOString(),
+  };
+}
+
+/**
+ * Extract a full conversation in the requested format.
+ * Returns { content, filename, mimeType }.
+ */
+async function extractConversation(dirPath, sessionId, format) {
+  const detail = await fetchConversationDetail(dirPath, sessionId);
+  if (detail.error) return detail;
+
+  const title = detail.customTitle || `conversation-${sessionId.slice(0, 8)}`;
+  const safeTitle = title.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60);
+
+  if (format === 'markdown') {
+    let md = `# ${title}\n\n`;
+    md += `**Session:** ${sessionId}\n`;
+    md += `**Directory:** ${detail.cwd || 'unknown'}\n`;
+    if (detail.gitBranch) md += `**Branch:** ${detail.gitBranch}\n`;
+    md += `**Created:** ${detail.createdAt}\n`;
+    md += `**Last Modified:** ${detail.lastModified}\n\n---\n\n`;
+
+    for (const msg of detail.messages) {
+      const role = msg.role === 'user' ? 'User' : 'Assistant';
+      const time = msg.timestamp ? ` _(${new Date(msg.timestamp).toLocaleString()})_` : '';
+      md += `### ${role}${time}\n\n${msg.text}\n\n---\n\n`;
+    }
+
+    return { content: md, filename: `${safeTitle}.md`, mimeType: 'text/markdown' };
+  }
+
+  if (format === 'json') {
+    const json = JSON.stringify({
+      sessionId: detail.sessionId,
+      title: detail.customTitle,
+      cwd: detail.cwd,
+      gitBranch: detail.gitBranch,
+      createdAt: detail.createdAt,
+      lastModified: detail.lastModified,
+      messages: detail.messages,
+    }, null, 2);
+
+    return { content: json, filename: `${safeTitle}.json`, mimeType: 'application/json' };
+  }
+
+  if (format === 'jsonl') {
+    // Return raw JSONL file contents
+    let transcriptPath = null;
+    const targetKey = pathToProjectKey(dirPath);
+    try {
+      const allDirs = await readdir(CLAUDE_PROJECTS_DIR);
+      for (const dir of allDirs) {
+        if (dir === targetKey || dir.startsWith(targetKey + '-')) {
+          const candidate = join(CLAUDE_PROJECTS_DIR, dir, `${sessionId}.jsonl`);
+          try { await stat(candidate); transcriptPath = candidate; break; } catch {}
+        }
+      }
+    } catch {}
+
+    if (!transcriptPath) {
+      try {
+        const allDirs = await readdir(CLAUDE_PROJECTS_DIR);
+        for (const dir of allDirs) {
+          const candidate = join(CLAUDE_PROJECTS_DIR, dir, `${sessionId}.jsonl`);
+          try { await stat(candidate); transcriptPath = candidate; break; } catch {}
+        }
+      } catch {}
+    }
+
+    if (!transcriptPath) return { error: 'JSONL file not found' };
+
+    const raw = await readFileAsync(transcriptPath, 'utf8');
+    return { content: raw, filename: `${safeTitle}.jsonl`, mimeType: 'application/jsonl' };
+  }
+
+  return { error: `Unknown format: ${format}` };
+}
+
 // --- Pane state persistence (same pattern as beads.js) ---
 
 function ensureDataDir() {
@@ -359,4 +548,6 @@ export const conversationsService = {
   },
 
   scanConversations,
+  fetchConversationDetail,
+  extractConversation,
 };
