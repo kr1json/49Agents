@@ -2658,6 +2658,112 @@ body.minimap-hidden #controls {
   }
 }
 
+/* === Promo / Community Toasts === */
+
+.notification-toast .promo-icon {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.notification-toast .promo-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Discord — blurple */
+.notification-toast.state-promo-discord {
+  border-color: rgba(88, 101, 242, 0.5);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    0 0 12px rgba(88, 101, 242, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.notification-toast.state-promo-discord:hover {
+  border-left: 3px solid rgba(88, 101, 242, 0.8);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 20px rgba(88, 101, 242, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.notification-toast.state-promo-discord .promo-icon { color: #5865F2; }
+
+/* X — near-white */
+.notification-toast.state-promo-x {
+  border-color: rgba(200, 200, 200, 0.3);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    0 0 12px rgba(200, 200, 200, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.notification-toast.state-promo-x:hover {
+  border-left: 3px solid rgba(200, 200, 200, 0.6);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 20px rgba(200, 200, 200, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.notification-toast.state-promo-x .promo-icon { color: #e7e9ea; }
+
+/* GitHub — light gray */
+.notification-toast.state-promo-github {
+  border-color: rgba(200, 200, 200, 0.3);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    0 0 12px rgba(200, 200, 200, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.notification-toast.state-promo-github:hover {
+  border-left: 3px solid rgba(200, 200, 200, 0.6);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 20px rgba(200, 200, 200, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.notification-toast.state-promo-github .promo-icon { color: #e6edf3; }
+
+/* LinkedIn — brand blue */
+.notification-toast.state-promo-linkedin {
+  border-color: rgba(0, 119, 181, 0.5);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    0 0 12px rgba(0, 119, 181, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.notification-toast.state-promo-linkedin:hover {
+  border-left: 3px solid rgba(0, 119, 181, 0.8);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 20px rgba(0, 119, 181, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.notification-toast.state-promo-linkedin .promo-icon { color: #0A66C2; }
+
+/* License warning — amber */
+.notification-toast.state-promo-license {
+  border-color: rgba(234, 179, 8, 0.5);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    0 0 12px rgba(234, 179, 8, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.notification-toast.state-promo-license:hover {
+  border-left: 3px solid rgba(234, 179, 8, 0.8);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 20px rgba(234, 179, 8, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.notification-toast.state-promo-license .promo-icon { color: #EAB308; }
+
+/* Promo toasts: gentler animation — no nudge, slow glow only */
+.notification-toast[data-promo="1"].visible {
+  animation: notification-glow 4s ease-in-out infinite;
+  animation-delay: 0.4s;
+}
+.notification-toast[data-promo="1"].visible:hover {
+  animation: none;
+  filter: brightness(1);
+}
+
 /* HUD Container — flex column for stacking panes */
 #hud-container {
   position: fixed;
