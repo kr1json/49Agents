@@ -1559,8 +1559,16 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
       const day = target.getDate();
       const hr = String(target.getHours()).padStart(2, '0');
       const min = String(target.getMinutes()).padStart(2, '0');
-      // 짧은 타임존 약어 (e.g. KST, PST, EST)
-      const tz = Intl.DateTimeFormat('en', { timeZoneName: 'short' }).formatToParts(target).find(p => p.type === 'timeZoneName')?.value || '';
+      // IANA 타임존 → 약어 매핑 (브라우저가 GMT+9 등을 반환하는 경우 대비)
+      const ianaZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+      const tzAbbr = {
+        'Asia/Seoul': 'KST', 'Asia/Tokyo': 'JST', 'Asia/Shanghai': 'CST',
+        'America/New_York': 'EST', 'America/Chicago': 'CST', 'America/Denver': 'MST',
+        'America/Los_Angeles': 'PST', 'Europe/London': 'GMT', 'Europe/Paris': 'CET',
+        'Europe/Berlin': 'CET', 'Asia/Kolkata': 'IST', 'Asia/Calcutta': 'IST',
+        'Australia/Sydney': 'AEST', 'Pacific/Auckland': 'NZST',
+      };
+      const tz = tzAbbr[ianaZone] || target.toLocaleTimeString('en-US', { timeZoneName: 'short' }).split(' ').pop();
       return `${mon}/${day} ${hr}:${min} ${tz}`;
     }
     if (h > 0) return `${h}h ${m}m`;
