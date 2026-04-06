@@ -1971,6 +1971,32 @@ body.minimap-hidden #controls {
   opacity: 1;
 }
 
+/* Terminal context shortcut buttons (File / Git Graph / Folder from cwd) */
+.term-ctx-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: rgba(160, 180, 200, 0.35);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.15s;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.term-ctx-btn:hover {
+  background: rgba(100, 160, 220, 0.2);
+  color: rgba(160, 200, 240, 0.9);
+}
+
+.term-ctx-btn:active {
+  transform: scale(0.9);
+}
+
 /* Beads tag header button */
 .beads-tag-btn {
   width: 24px;

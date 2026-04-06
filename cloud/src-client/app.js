@@ -4287,7 +4287,7 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
   // Shared folder-browse-then-scan picker used by git and beads repo pickers.
   // config: { id, headerHTML, scanLabel, onScan(folderPath, contentArea, closeBrowser, navigateFolder, navRefresh), device, targetAgentId }
   function showFolderScanPicker(config) {
-    const { id, headerHTML, scanLabel, onScan, device, targetAgentId } = config;
+    const { id, headerHTML, scanLabel, onScan, device, targetAgentId, startPath = '~' } = config;
     const { overlay, header, breadcrumbBar, contentArea, closeBrowser, addCleanup } = createBrowserOverlay(id, headerHTML);
 
     // Attach keyboard nav to the overlay (lives for entire overlay lifetime)
@@ -4339,7 +4339,7 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
       }
     }
 
-    navigateFolder('~');
+    navigateFolder(startPath);
     return { closeBrowser };
   }
 
@@ -4594,7 +4594,7 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
   }
 
   // Show folder browser then repo picker for git graph pane
-  async function showGitRepoPicker(device, placementPos, thenPlace = false, targetAgentId) {
+  async function showGitRepoPicker(device, placementPos, thenPlace = false, targetAgentId, startPath) {
     const deviceLabel = device ? deviceLabelHtml(device, 'font-size:11px; padding:2px 8px;') : '';
     const headerHTML = `
       <svg viewBox="0 0 24 24" width="16" height="16" style="color:rgba(255,255,255,0.6);">${ICON_GIT_GRAPH}</svg>
@@ -4609,6 +4609,7 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
       scanLabel: 'Scan this folder for repos',
       device,
       targetAgentId,
+      startPath,
       onScan: async (folderPath, contentArea, closeBrowser, navigateFolder, navRefresh) => {
         // Set up progressive UI immediately
         contentArea.innerHTML = '';
@@ -5037,6 +5038,9 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
         ${paneNameHtml(paneData)}
         <div class="pane-header-right">
           ${shortcutBadgeHtml(paneData)}
+          <button class="term-ctx-btn" data-action="file" aria-label="Browse files" data-tooltip="Browse files from cwd"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></button>
+          <button class="term-ctx-btn" data-action="git-graph" aria-label="Git graph" data-tooltip="Git graph from cwd"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="0">${ICON_GIT_GRAPH}</svg></button>
+          <button class="term-ctx-btn" data-action="folder" aria-label="Open folder" data-tooltip="Open folder from cwd"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button>
           <button class="beads-tag-btn" aria-label="Set beads issue" data-tooltip="Set beads issue"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="0">${ICON_BEADS}</svg></button>
           <button class="term-refresh-history" aria-label="Reload history" data-tooltip="Reload history"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 3a7 7 0 1 0 1 5"/><polyline points="14 1 14 5 10 5"/></svg></button>
           <div class="pane-zoom-controls">
@@ -7650,6 +7654,24 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
       });
     }
 
+    // Terminal context buttons (File / Git Graph / Folder from cwd)
+    paneEl.querySelectorAll('.term-ctx-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const action = btn.dataset.action;
+        const cwd = paneData.workingDir || '~';
+        const device = paneData.device;
+        const agentId = paneData.agentId;
+        if (action === 'file') {
+          showFileBrowser(device, cwd, null, true, agentId);
+        } else if (action === 'git-graph') {
+          showGitRepoPicker(device, null, true, agentId, cwd);
+        } else if (action === 'folder') {
+          showFolderPickerThenPlace(agentId, device, cwd);
+        }
+      });
+    });
+
     // Beads tag removal via X button
     paneEl.addEventListener('click', (e) => {
       const removeBtn = e.target.closest('.beads-tag-remove');
@@ -9642,7 +9664,7 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
     );
   }
 
-  async function showFolderPickerThenPlace(targetAgentId, device) {
+  async function showFolderPickerThenPlace(targetAgentId, device, startPath) {
     const deviceLabel = device ? deviceLabelHtml(device, 'font-size:11px; padding:2px 8px;') : '';
     const headerHTML = `
       <svg viewBox="0 0 24 24" width="16" height="16" style="color:rgba(255,255,255,0.6);">${ICON_FOLDER}</svg>
@@ -9655,6 +9677,7 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
       scanLabel: 'Open this folder as a pane',
       device,
       targetAgentId,
+      startPath,
       onScan: async (folderPath, contentArea, closeBrowser, navigateFolder, navRefresh) => {
         closeBrowser();
         enterPlacementMode('folder', (pos) => createFolderPane(folderPath, pos, targetAgentId, device));
