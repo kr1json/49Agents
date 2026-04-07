@@ -117,9 +117,9 @@
     <h2>A quick note</h2>
 
     <div class="description">
-      49Agents is a small project just getting started, and understanding how people use the app helps us make it better. We collect anonymous usage telemetry -- things like which features get used, how long sessions last, and how many panes you open. No personal data, terminal content, or file contents are ever collected.
+      49Agents is a small project just getting started, and understanding how people use the app helps us make it better. We collect basic usage data tied to your account -- things like which features get used, how long sessions last, and how many panes you open. No terminal content, file data, or commands are ever collected.
       <br><br>
-      If you'd rather not share this data, you can turn telemetry off anytime in Settings.
+      You can turn this off anytime in Settings.
     </div>
 
     <button class="continue-btn" id="continue-btn">Got it</button>
@@ -149,7 +149,7 @@
       } catch (e) {
         btn.textContent = 'Network error';
         btn.disabled = false;
-        setTimeout(function() { btn.textContent = 'Continue'; }, 3000);
+        setTimeout(function() { btn.textContent = 'Got it'; }, 3000);
       }
     });
   </script>
