@@ -125,13 +125,17 @@ export function setupWebSocketRelay(server, options = {}) {
             });
             userId = devUser.id;
           } else {
-            // Local mode: require cloud authentication
+            // Local mode: try cloud auth first, then JWT cookies (guest sessions)
             const localAuth = getLocalAuth();
             if (localAuth) {
               const user = getUserById(localAuth.cloudUserId);
               if (user) {
                 userId = user.id;
               }
+            }
+            // Fall through to JWT cookie auth if no cloud auth (supports guest mode)
+            if (!userId) {
+              userId = await authenticateBrowserUpgrade(request);
             }
             if (!userId) {
               socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');

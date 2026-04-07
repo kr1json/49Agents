@@ -92,11 +92,12 @@ function clearAuthCookies(res) {
  * Register GitHub OAuth routes on the Express app.
  */
 export function setupGitHubAuth(app) {
-  // POST /auth/guest — create a guest session (only when OAuth is enabled)
+  // POST /auth/guest — create a guest session (when OAuth is enabled or in local mode)
   app.post('/auth/guest', async (req, res) => {
     const hasOAuth = !!(config.github.clientId || config.google.clientId);
-    if (!hasOAuth) {
-      return res.status(400).json({ error: 'Guest mode not available (no OAuth configured)' });
+    const isLocal = !hasOAuth && config.nodeEnv !== 'production';
+    if (!hasOAuth && !isLocal) {
+      return res.status(400).json({ error: 'Guest mode not available' });
     }
 
     try {

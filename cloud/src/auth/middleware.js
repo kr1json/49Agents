@@ -46,21 +46,20 @@ async function handleAuth(req, res, next) {
       return next();
     }
 
-    // Local mode: require cloud authentication
+    // Local mode: try cloud-authenticated identity first, then fall through
+    // to JWT cookie check (supports guest sessions and cloud-callback auth)
     const localAuth = getLocalAuth();
-    if (!localAuth) {
-      return sendUnauthorized(req, res);
+    if (localAuth) {
+      const user = getUserById(localAuth.cloudUserId) || upsertUser({
+        githubLogin: localAuth.githubLogin,
+        email: localAuth.email,
+        displayName: localAuth.displayName || 'Local User',
+        avatarUrl: localAuth.avatarUrl,
+      });
+      req.user = user;
+      return next();
     }
-
-    // Use the cloud-authenticated identity
-    const user = getUserById(localAuth.cloudUserId) || upsertUser({
-      githubLogin: localAuth.githubLogin,
-      email: localAuth.email,
-      displayName: localAuth.displayName || 'Local User',
-      avatarUrl: localAuth.avatarUrl,
-    });
-    req.user = user;
-    return next();
+    // Fall through to JWT cookie check below (guest mode, etc.)
   }
 
   const accessToken = req.cookies?.tc_access;
