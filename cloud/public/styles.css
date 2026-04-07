@@ -6061,3 +6061,390 @@ body.cursor-suppressed .pane { pointer-events: none !important; }
   text-align: center;
 }
 
+/* ============================================================================
+   PROJECTS & CHECKPOINTS
+   ============================================================================ */
+
+/* Project rectangles on canvas */
+.project-rect {
+  position: absolute;
+  pointer-events: none;
+  transition: border-color 0.2s ease;
+}
+
+.project-rect-label {
+  position: absolute;
+  top: -28px;
+  left: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: auto;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(10, 15, 25, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  white-space: nowrap;
+}
+
+.project-rect-label:active {
+  cursor: grabbing;
+}
+
+.project-rename-input {
+  background: rgba(10, 15, 25, 0.9);
+  border: 1px solid rgba(218, 119, 86, 0.4);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-family: 'Montserrat', sans-serif;
+  outline: none;
+  width: 150px;
+}
+
+.project-rect-resize {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  cursor: nwse-resize;
+  pointer-events: auto;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.project-rect-resize::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid rgba(255, 255, 255, 0.3);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.project-rect:hover .project-rect-resize {
+  opacity: 1;
+}
+
+/* Project context menu */
+.project-context-menu {
+  position: fixed;
+  z-index: 10000;
+  background: rgba(10, 15, 25, 0.95);
+  border: 1px solid rgba(218, 119, 86, 0.3);
+  border-radius: 8px;
+  padding: 4px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  min-width: 180px;
+}
+
+.project-context-menu button {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  font-family: 'Montserrat', sans-serif;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.project-context-menu button:hover {
+  background: rgba(218, 119, 86, 0.15);
+  color: #fff;
+}
+
+/* Project creation overlay */
+.project-creation-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 9998;
+  cursor: crosshair;
+}
+
+.project-creation-hint {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(10, 15, 25, 0.9);
+  border: 1px solid rgba(218, 119, 86, 0.3);
+  border-radius: 12px;
+  padding: 16px 24px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  font-family: 'Montserrat', sans-serif;
+  pointer-events: none;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  animation: fadeIn 0.2s ease;
+}
+
+.project-creation-preview {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* Checkpoint markers */
+.checkpoint-marker {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.15s ease;
+}
+
+.checkpoint-marker:hover {
+  transform: scale(1.1);
+}
+
+.checkpoint-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(218, 119, 86, 0.8);
+  background: rgba(10, 15, 25, 0.7);
+  border-radius: 50%;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.checkpoint-label {
+  font-size: 11px;
+  color: rgba(218, 119, 86, 0.7);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  background: rgba(10, 15, 25, 0.6);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.checkpoint-rename-input {
+  background: rgba(10, 15, 25, 0.9);
+  border: 1px solid rgba(218, 119, 86, 0.4);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(218, 119, 86, 0.9);
+  font-family: 'Montserrat', sans-serif;
+  outline: none;
+  width: 120px;
+}
+
+/* Projects Sidebar (right side) */
+#projects-sidebar {
+  position: fixed;
+  top: 76px;
+  right: 16px;
+  z-index: 1000;
+  width: 260px;
+  max-height: calc(100vh - 100px);
+  background: rgba(10, 15, 25, 0.85);
+  border: 1px solid rgba(218, 119, 86, 0.2);
+  border-radius: 12px;
+  padding: 10px 12px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(218, 119, 86, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  overflow-y: auto;
+  transform: translateX(calc(100% + 20px));
+  opacity: 0;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+  pointer-events: none;
+}
+
+#projects-sidebar.visible {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.projects-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.projects-sidebar-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(218, 119, 86, 0.7);
+}
+
+.projects-sidebar-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.projects-sidebar-btn {
+  background: rgba(218, 119, 86, 0.12);
+  border: 1px solid rgba(218, 119, 86, 0.2);
+  color: rgba(218, 119, 86, 0.8);
+  font-size: 10px;
+  font-weight: 600;
+  font-family: 'Montserrat', sans-serif;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.projects-sidebar-btn:hover {
+  background: rgba(218, 119, 86, 0.25);
+  border-color: rgba(218, 119, 86, 0.4);
+}
+
+.projects-sidebar-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ps-section-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.3);
+  margin-top: 8px;
+  margin-bottom: 4px;
+  padding-left: 2px;
+}
+
+.ps-section-label:first-child {
+  margin-top: 0;
+}
+
+.ps-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.ps-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ps-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ps-checkpoint-icon {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(218, 119, 86, 0.7);
+}
+
+.ps-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ps-item-name {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ps-item-stats {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.ps-stat {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.ps-stat.ps-working {
+  color: rgba(249, 115, 22, 0.8);
+}
+
+.ps-stat.ps-done {
+  color: rgba(34, 197, 94, 0.8);
+}
+
+.ps-number-badge {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.ps-empty {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  text-align: center;
+  padding: 20px 10px;
+  line-height: 1.5;
+}
+
+/* Menu separator for add-pane-menu */
+.menu-separator {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 4px 8px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Mobile: hide projects sidebar below 768px */
+@media (max-width: 768px) {
+  #projects-sidebar {
+    width: 220px;
+    right: 8px;
+    top: 70px;
+  }
+}
+

@@ -31,7 +31,9 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
     zoom: 1,
     panX: 0,
     panY: 0,
-    nextZIndex: 1
+    nextZIndex: 1,
+    projects: [],     // { id, name, color, x, y, width, height }
+    checkpoints: [],  // { id, name, x, y, projectId? }
   };
 
   // File editors map (paneId -> { originalContent, hasChanges, fileHandle })
@@ -58,6 +60,7 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
   let focusMode = 'hover'; // 'hover' (default) or 'click' — how mouse selects panes
   let tabHeld = false; // Track Tab key state globally (used for Tab+scroll canvas pan, Tab+key chords)
   let tutorialsCompleted = {};
+  let projectsSidebarVisible = false; // Tab+P toggles projects sidebar
 
   // ---------------------------------------------------------------------------
   // Client-side telemetry tracker (local mode only, respects consent)
@@ -1982,6 +1985,8 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
       if (prefs.tutorialsCompleted) {
         tutorialsCompleted = prefs.tutorialsCompleted;
       }
+      // Load projects & checkpoints
+      loadProjectsFromPrefs(prefs);
     } catch (e) {
       console.error('[App] Preferences load failed:', e.message);
     }
@@ -3925,6 +3930,11 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
     if (lastReceivedClaudeStates) {
       updateClaudeStates(lastReceivedClaudeStates);
     }
+
+    // Render project rectangles and checkpoint markers on canvas
+    renderProjectRectangles();
+    renderCheckpointMarkers();
+    startProjectsSidebarRefresh();
   }
 
   /**
@@ -9896,6 +9906,641 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
 
 
   // ============================================================================
+  // SECTION 19b: PROJECTS & CHECKPOINTS
+  // Project rectangles on canvas, checkpoint navigation, projects sidebar
+  // ============================================================================
+
+  const PROJECT_COLORS = [
+    { name: 'Blue',    value: '59, 130, 246' },
+    { name: 'Green',   value: '34, 197, 94' },
+    { name: 'Purple',  value: '168, 85, 247' },
+    { name: 'Orange',  value: '249, 115, 22' },
+    { name: 'Pink',    value: '236, 72, 153' },
+    { name: 'Cyan',    value: '6, 182, 212' },
+    { name: 'Yellow',  value: '234, 179, 8' },
+    { name: 'Red',     value: '239, 68, 68' },
+  ];
+
+  function generateProjectId() {
+    return 'proj-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  function generateCheckpointId() {
+    return 'ckpt-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  // Get panes that fall within a project's bounding rectangle
+  function getPanesInProject(project) {
+    return state.panes.filter(p => {
+      const px = p.x + p.width / 2;
+      const py = p.y + p.height / 2;
+      return px >= project.x && px <= project.x + project.width &&
+             py >= project.y && py <= project.y + project.height;
+    });
+  }
+
+  // Count pane states for a project
+  function getProjectPaneCounts(project) {
+    const panes = getPanesInProject(project);
+    let working = 0, done = 0, idle = 0, other = 0;
+    for (const p of panes) {
+      const el = document.getElementById(`pane-${p.id}`);
+      if (!el) { other++; continue; }
+      if (el.classList.contains('claude-working')) working++;
+      else if (el.classList.contains('claude-done')) done++;
+      else if (el.classList.contains('claude-idle')) idle++;
+      else other++;
+    }
+    return { total: panes.length, working, done, idle, other };
+  }
+
+  // Render project rectangles on the canvas
+  function renderProjectRectangles() {
+    // Remove existing project rectangles
+    canvas.querySelectorAll('.project-rect').forEach(el => el.remove());
+
+    for (const project of state.projects) {
+      const rect = document.createElement('div');
+      rect.className = 'project-rect';
+      rect.dataset.projectId = project.id;
+      rect.style.left = project.x + 'px';
+      rect.style.top = project.y + 'px';
+      rect.style.width = project.width + 'px';
+      rect.style.height = project.height + 'px';
+      rect.style.setProperty('--project-color', project.color);
+      rect.style.background = `rgba(${project.color}, 0.06)`;
+      rect.style.border = `2px solid rgba(${project.color}, 0.3)`;
+      rect.style.borderRadius = '16px';
+      rect.style.zIndex = '0';
+
+      // Project label
+      const label = document.createElement('div');
+      label.className = 'project-rect-label';
+      label.style.color = `rgba(${project.color}, 0.8)`;
+      label.textContent = project.name;
+      rect.appendChild(label);
+
+      // Resize handle
+      const resizeHandle = document.createElement('div');
+      resizeHandle.className = 'project-rect-resize';
+      rect.appendChild(resizeHandle);
+
+      // Make project draggable (from label area)
+      setupProjectDrag(rect, project, label);
+      // Make project resizable
+      setupProjectResize(rect, project, resizeHandle);
+
+      canvas.insertBefore(rect, canvas.firstChild);
+    }
+  }
+
+  function setupProjectDrag(rectEl, project, labelEl) {
+    let dragging = false;
+    let startX, startY, origX, origY;
+
+    labelEl.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      dragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      origX = project.x;
+      origY = project.y;
+
+      const moveHandler = (moveE) => {
+        if (!dragging) return;
+        const dx = (moveE.clientX - startX) / state.zoom;
+        const dy = (moveE.clientY - startY) / state.zoom;
+        project.x = origX + dx;
+        project.y = origY + dy;
+        rectEl.style.left = project.x + 'px';
+        rectEl.style.top = project.y + 'px';
+      };
+
+      const upHandler = () => {
+        dragging = false;
+        document.removeEventListener('mousemove', moveHandler);
+        document.removeEventListener('mouseup', upHandler);
+        saveProjectsToCloud();
+        // Update checkpoint position for this project
+        syncProjectCheckpoint(project);
+      };
+
+      document.addEventListener('mousemove', moveHandler);
+      document.addEventListener('mouseup', upHandler);
+    });
+
+    // Double-click label to rename
+    labelEl.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = project.name;
+      input.className = 'project-rename-input';
+      input.style.color = `rgba(${project.color}, 0.9)`;
+      labelEl.textContent = '';
+      labelEl.appendChild(input);
+      input.focus();
+      input.select();
+
+      const finish = () => {
+        const newName = input.value.trim() || project.name;
+        project.name = newName;
+        labelEl.textContent = newName;
+        saveProjectsToCloud();
+        syncProjectCheckpoint(project);
+        renderProjectsSidebar();
+      };
+
+      input.addEventListener('blur', finish);
+      input.addEventListener('keydown', (ke) => {
+        if (ke.key === 'Enter') { ke.preventDefault(); input.blur(); }
+        if (ke.key === 'Escape') { input.value = project.name; input.blur(); }
+      });
+    });
+
+    // Right-click to delete
+    rectEl.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showProjectContextMenu(e, project);
+    });
+  }
+
+  function showProjectContextMenu(e, project) {
+    // Remove any existing context menu
+    document.querySelectorAll('.project-context-menu').forEach(el => el.remove());
+
+    const menu = document.createElement('div');
+    menu.className = 'project-context-menu';
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.textContent = 'Delete Project';
+    deleteBtn.addEventListener('click', () => {
+      deleteProject(project.id);
+      menu.remove();
+    });
+
+    const addCheckpointBtn = document.createElement('button');
+    addCheckpointBtn.textContent = 'Add Standalone Checkpoint';
+    addCheckpointBtn.addEventListener('click', () => {
+      const ckpt = {
+        id: generateCheckpointId(),
+        name: 'Checkpoint',
+        x: project.x + project.width / 2,
+        y: project.y + project.height / 2,
+        projectId: null,
+      };
+      state.checkpoints.push(ckpt);
+      saveCheckpointsToCloud();
+      renderCheckpointMarkers();
+      renderProjectsSidebar();
+      menu.remove();
+    });
+
+    const renameBtn = document.createElement('button');
+    renameBtn.textContent = 'Rename Project';
+    renameBtn.addEventListener('click', () => {
+      menu.remove();
+      const labelEl = document.querySelector(`.project-rect[data-project-id="${project.id}"] .project-rect-label`);
+      if (labelEl) labelEl.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    });
+
+    menu.appendChild(renameBtn);
+    menu.appendChild(addCheckpointBtn);
+    menu.appendChild(deleteBtn);
+    document.body.appendChild(menu);
+
+    const closeMenu = (ev) => {
+      if (!menu.contains(ev.target)) {
+        menu.remove();
+        document.removeEventListener('click', closeMenu);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', closeMenu), 0);
+  }
+
+  function setupProjectResize(rectEl, project, handleEl) {
+    let resizing = false;
+    let startX, startY, origW, origH;
+
+    handleEl.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      e.preventDefault();
+      resizing = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      origW = project.width;
+      origH = project.height;
+
+      const moveHandler = (moveE) => {
+        if (!resizing) return;
+        const dx = (moveE.clientX - startX) / state.zoom;
+        const dy = (moveE.clientY - startY) / state.zoom;
+        project.width = Math.max(200, origW + dx);
+        project.height = Math.max(150, origH + dy);
+        rectEl.style.width = project.width + 'px';
+        rectEl.style.height = project.height + 'px';
+      };
+
+      const upHandler = () => {
+        resizing = false;
+        document.removeEventListener('mousemove', moveHandler);
+        document.removeEventListener('mouseup', upHandler);
+        saveProjectsToCloud();
+        syncProjectCheckpoint(project);
+      };
+
+      document.addEventListener('mousemove', moveHandler);
+      document.addEventListener('mouseup', upHandler);
+    });
+  }
+
+  function deleteProject(projectId) {
+    state.projects = state.projects.filter(p => p.id !== projectId);
+    // Remove associated checkpoint
+    state.checkpoints = state.checkpoints.filter(c => c.projectId !== projectId);
+    saveProjectsToCloud();
+    saveCheckpointsToCloud();
+    renderProjectRectangles();
+    renderCheckpointMarkers();
+    renderProjectsSidebar();
+  }
+
+  // Sync the auto-checkpoint for a project (created at center)
+  function syncProjectCheckpoint(project) {
+    let ckpt = state.checkpoints.find(c => c.projectId === project.id);
+    const cx = project.x + project.width / 2;
+    const cy = project.y + project.height / 2;
+    if (ckpt) {
+      ckpt.x = cx;
+      ckpt.y = cy;
+      ckpt.name = project.name;
+    } else {
+      ckpt = {
+        id: generateCheckpointId(),
+        name: project.name,
+        x: cx,
+        y: cy,
+        projectId: project.id,
+      };
+      state.checkpoints.push(ckpt);
+    }
+    saveCheckpointsToCloud();
+    renderCheckpointMarkers();
+    renderProjectsSidebar();
+  }
+
+  // Navigate to a checkpoint with animation
+  function navigateToCheckpoint(checkpoint) {
+    const targetX = window.innerWidth / 2 - checkpoint.x * state.zoom;
+    const targetY = window.innerHeight / 2 - checkpoint.y * state.zoom;
+
+    canvas.style.transition = 'transform 300ms cubic-bezier(0.4, 0, 0.2, 1)';
+    state.panX = targetX;
+    state.panY = targetY;
+    updateCanvasTransform();
+    setTimeout(() => { canvas.style.transition = ''; }, 320);
+    saveViewState();
+  }
+
+  // Render checkpoint markers on canvas
+  function renderCheckpointMarkers() {
+    canvas.querySelectorAll('.checkpoint-marker').forEach(el => el.remove());
+
+    for (const ckpt of state.checkpoints) {
+      // Only show standalone checkpoints as markers (project ones are implied by the rect)
+      if (ckpt.projectId) continue;
+
+      const marker = document.createElement('div');
+      marker.className = 'checkpoint-marker';
+      marker.dataset.checkpointId = ckpt.id;
+      marker.style.left = (ckpt.x - 12) + 'px';
+      marker.style.top = (ckpt.y - 12) + 'px';
+
+      const icon = document.createElement('div');
+      icon.className = 'checkpoint-icon';
+      icon.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z" fill="currentColor"/></svg>';
+      marker.appendChild(icon);
+
+      const label = document.createElement('span');
+      label.className = 'checkpoint-label';
+      label.textContent = ckpt.name;
+      marker.appendChild(label);
+
+      // Double-click to rename
+      marker.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = ckpt.name;
+        input.className = 'checkpoint-rename-input';
+        label.style.display = 'none';
+        marker.appendChild(input);
+        input.focus();
+        input.select();
+
+        const finish = () => {
+          const newName = input.value.trim() || ckpt.name;
+          ckpt.name = newName;
+          label.textContent = newName;
+          label.style.display = '';
+          input.remove();
+          saveCheckpointsToCloud();
+          renderProjectsSidebar();
+        };
+
+        input.addEventListener('blur', finish);
+        input.addEventListener('keydown', (ke) => {
+          if (ke.key === 'Enter') { ke.preventDefault(); input.blur(); }
+          if (ke.key === 'Escape') { input.value = ckpt.name; input.blur(); }
+        });
+      });
+
+      // Right-click to delete
+      marker.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        state.checkpoints = state.checkpoints.filter(c => c.id !== ckpt.id);
+        saveCheckpointsToCloud();
+        renderCheckpointMarkers();
+        renderProjectsSidebar();
+      });
+
+      // Click to navigate
+      marker.addEventListener('click', (e) => {
+        e.stopPropagation();
+        navigateToCheckpoint(ckpt);
+      });
+
+      canvas.appendChild(marker);
+    }
+  }
+
+  // Create a new project via placement mode (draw rectangle)
+  function startProjectCreation() {
+    const colorIdx = state.projects.length % PROJECT_COLORS.length;
+    const color = PROJECT_COLORS[colorIdx].value;
+
+    // Enter a draw-rectangle mode
+    const overlay = document.createElement('div');
+    overlay.className = 'project-creation-overlay';
+    overlay.innerHTML = '<div class="project-creation-hint">Click and drag to draw a project area. Press Escape to cancel.</div>';
+    document.body.appendChild(overlay);
+
+    let drawing = false;
+    let startCanvasX, startCanvasY;
+    let previewRect = null;
+
+    const mousedownHandler = (e) => {
+      if (e.button !== 0) return;
+      drawing = true;
+      startCanvasX = (e.clientX - state.panX) / state.zoom;
+      startCanvasY = (e.clientY - state.panY) / state.zoom;
+
+      previewRect = document.createElement('div');
+      previewRect.className = 'project-creation-preview';
+      previewRect.style.background = `rgba(${color}, 0.1)`;
+      previewRect.style.border = `2px dashed rgba(${color}, 0.5)`;
+      previewRect.style.borderRadius = '16px';
+      previewRect.style.left = startCanvasX + 'px';
+      previewRect.style.top = startCanvasY + 'px';
+      canvas.appendChild(previewRect);
+    };
+
+    const mousemoveHandler = (e) => {
+      if (!drawing || !previewRect) return;
+      const curX = (e.clientX - state.panX) / state.zoom;
+      const curY = (e.clientY - state.panY) / state.zoom;
+      const x = Math.min(startCanvasX, curX);
+      const y = Math.min(startCanvasY, curY);
+      const w = Math.abs(curX - startCanvasX);
+      const h = Math.abs(curY - startCanvasY);
+      previewRect.style.left = x + 'px';
+      previewRect.style.top = y + 'px';
+      previewRect.style.width = w + 'px';
+      previewRect.style.height = h + 'px';
+    };
+
+    const mouseupHandler = (e) => {
+      if (!drawing) return;
+      drawing = false;
+
+      const endX = (e.clientX - state.panX) / state.zoom;
+      const endY = (e.clientY - state.panY) / state.zoom;
+      const x = Math.min(startCanvasX, endX);
+      const y = Math.min(startCanvasY, endY);
+      const w = Math.abs(endX - startCanvasX);
+      const h = Math.abs(endY - startCanvasY);
+
+      cleanup();
+
+      if (w < 100 || h < 80) return; // Too small, cancel
+
+      const project = {
+        id: generateProjectId(),
+        name: 'Project ' + (state.projects.length + 1),
+        color: color,
+        x, y,
+        width: w,
+        height: h,
+      };
+      state.projects.push(project);
+      syncProjectCheckpoint(project);
+      saveProjectsToCloud();
+      renderProjectRectangles();
+      renderProjectsSidebar();
+    };
+
+    const keyHandler = (e) => {
+      if (e.key === 'Escape') {
+        drawing = false;
+        cleanup();
+      }
+    };
+
+    function cleanup() {
+      overlay.remove();
+      if (previewRect) previewRect.remove();
+      document.removeEventListener('mousedown', mousedownHandler);
+      document.removeEventListener('mousemove', mousemoveHandler);
+      document.removeEventListener('mouseup', mouseupHandler);
+      document.removeEventListener('keydown', keyHandler, true);
+    }
+
+    document.addEventListener('mousedown', mousedownHandler);
+    document.addEventListener('mousemove', mousemoveHandler);
+    document.addEventListener('mouseup', mouseupHandler);
+    document.addEventListener('keydown', keyHandler, true);
+  }
+
+  // Create standalone checkpoint at canvas center
+  function createStandaloneCheckpoint() {
+    const centerX = (window.innerWidth / 2 - state.panX) / state.zoom;
+    const centerY = (window.innerHeight / 2 - state.panY) / state.zoom;
+    const ckpt = {
+      id: generateCheckpointId(),
+      name: 'Checkpoint ' + (state.checkpoints.filter(c => !c.projectId).length + 1),
+      x: centerX,
+      y: centerY,
+      projectId: null,
+    };
+    state.checkpoints.push(ckpt);
+    saveCheckpointsToCloud();
+    renderCheckpointMarkers();
+    renderProjectsSidebar();
+  }
+
+  // -- Projects Sidebar (right side) --
+  function createProjectsSidebar() {
+    const sidebar = document.createElement('div');
+    sidebar.id = 'projects-sidebar';
+    sidebar.className = 'tc-scrollbar';
+    sidebar.innerHTML = `
+      <div class="projects-sidebar-header">
+        <span class="projects-sidebar-title">Projects</span>
+        <div class="projects-sidebar-actions">
+          <button class="projects-sidebar-btn" id="add-project-btn" title="New Project (draw rectangle)">+P</button>
+          <button class="projects-sidebar-btn" id="add-checkpoint-btn" title="New Checkpoint at viewport center">+C</button>
+        </div>
+      </div>
+      <div class="projects-sidebar-content"></div>
+    `;
+    document.body.appendChild(sidebar);
+
+    sidebar.querySelector('#add-project-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      startProjectCreation();
+    });
+
+    sidebar.querySelector('#add-checkpoint-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      createStandaloneCheckpoint();
+    });
+
+    return sidebar;
+  }
+
+  function toggleProjectsSidebar() {
+    projectsSidebarVisible = !projectsSidebarVisible;
+    let sidebar = document.getElementById('projects-sidebar');
+    if (!sidebar) {
+      sidebar = createProjectsSidebar();
+    }
+    sidebar.classList.toggle('visible', projectsSidebarVisible);
+    if (projectsSidebarVisible) {
+      renderProjectsSidebar();
+    }
+  }
+
+  function renderProjectsSidebar() {
+    const content = document.querySelector('#projects-sidebar .projects-sidebar-content');
+    if (!content) return;
+
+    let html = '';
+
+    // Projects section
+    if (state.projects.length > 0) {
+      html += '<div class="ps-section-label">Projects</div>';
+      for (let i = 0; i < state.projects.length; i++) {
+        const project = state.projects[i];
+        const counts = getProjectPaneCounts(project);
+        const ckpt = state.checkpoints.find(c => c.projectId === project.id);
+        const numberBadge = i < 9 ? `<span class="ps-number-badge">Ctrl+${i + 1}</span>` : '';
+
+        html += `<div class="ps-item ps-project" data-project-id="${project.id}">
+          <div class="ps-color-dot" style="background: rgba(${project.color}, 0.8);"></div>
+          <div class="ps-item-info">
+            <div class="ps-item-name">${escapeHtml(project.name)}</div>
+            <div class="ps-item-stats">
+              <span class="ps-stat">${counts.total} panes</span>
+              ${counts.working > 0 ? `<span class="ps-stat ps-working">${counts.working} working</span>` : ''}
+              ${counts.done > 0 ? `<span class="ps-stat ps-done">${counts.done} done</span>` : ''}
+            </div>
+          </div>
+          ${numberBadge}
+        </div>`;
+      }
+    }
+
+    // Standalone checkpoints section
+    const standaloneCheckpoints = state.checkpoints.filter(c => !c.projectId);
+    if (standaloneCheckpoints.length > 0) {
+      html += '<div class="ps-section-label">Checkpoints</div>';
+      for (const ckpt of standaloneCheckpoints) {
+        html += `<div class="ps-item ps-checkpoint" data-checkpoint-id="${ckpt.id}">
+          <div class="ps-checkpoint-icon">
+            <svg viewBox="0 0 24 24" width="12" height="12"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z" fill="currentColor"/></svg>
+          </div>
+          <div class="ps-item-info">
+            <div class="ps-item-name">${escapeHtml(ckpt.name)}</div>
+          </div>
+        </div>`;
+      }
+    }
+
+    if (state.projects.length === 0 && standaloneCheckpoints.length === 0) {
+      html = '<div class="ps-empty">No projects yet. Click +P to draw a project area on the canvas, or use the add menu.</div>';
+    }
+
+    content.innerHTML = html;
+
+    // Wire up click handlers
+    content.querySelectorAll('.ps-project').forEach(el => {
+      el.addEventListener('click', () => {
+        const projId = el.dataset.projectId;
+        const ckpt = state.checkpoints.find(c => c.projectId === projId);
+        if (ckpt) navigateToCheckpoint(ckpt);
+      });
+    });
+
+    content.querySelectorAll('.ps-checkpoint').forEach(el => {
+      el.addEventListener('click', () => {
+        const ckptId = el.dataset.checkpointId;
+        const ckpt = state.checkpoints.find(c => c.id === ckptId);
+        if (ckpt) navigateToCheckpoint(ckpt);
+      });
+    });
+  }
+
+  // Persistence: save/load projects and checkpoints via cloud API
+  let projectsSaveTimer = null;
+  function saveProjectsToCloud() {
+    if (projectsSaveTimer) clearTimeout(projectsSaveTimer);
+    projectsSaveTimer = setTimeout(() => {
+      cloudFetch('PUT', '/api/preferences', getAllPrefs({
+        projects: state.projects,
+        checkpoints: state.checkpoints,
+      })).catch(e => console.error('[Projects] Save failed:', e.message));
+    }, 500);
+  }
+
+  function saveCheckpointsToCloud() {
+    saveProjectsToCloud(); // bundled together
+  }
+
+  function loadProjectsFromPrefs(prefs) {
+    if (prefs.projects && Array.isArray(prefs.projects)) {
+      state.projects = prefs.projects;
+    }
+    if (prefs.checkpoints && Array.isArray(prefs.checkpoints)) {
+      state.checkpoints = prefs.checkpoints;
+    }
+  }
+
+  // Periodically refresh sidebar pane counts (every 5s when visible)
+  let projectsSidebarRefreshTimer = null;
+  function startProjectsSidebarRefresh() {
+    if (projectsSidebarRefreshTimer) clearInterval(projectsSidebarRefreshTimer);
+    projectsSidebarRefreshTimer = setInterval(() => {
+      if (projectsSidebarVisible) renderProjectsSidebar();
+    }, 5000);
+  }
+
+  // ============================================================================
   // SECTION 20: UI MENUS & TOOLBAR                               [Lines ~8954-9405]
   // setupAddPaneMenu(), setupTutorialMenu(), setupToolbarButtons(),
   // setupCustomTooltips(), setupCanvasInteraction(), calcMoveModeZoom()
@@ -9940,6 +10585,8 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
         showFolderPaneDevicePickerThenPlace();
       } else if (type === 'conversations') {
         showConversationsDirPickerThenPlace();
+      } else if (type === 'project') {
+        startProjectCreation();
       }
     }
 
@@ -10957,6 +11604,26 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
           startMinimapLoop();
         }
         return;
+      }
+      // Tab+P: toggle projects sidebar
+      if (e.key === 'p' && tabHeld) {
+        tabChordUsed = true;
+        e.preventDefault();
+        e.stopPropagation();
+        toggleProjectsSidebar();
+        return;
+      }
+      // Ctrl+1..9: jump to project checkpoint by number
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key >= '1' && e.key <= '9') {
+        const num = parseInt(e.key, 10);
+        if (num <= state.projects.length) {
+          e.preventDefault();
+          e.stopPropagation();
+          const project = state.projects[num - 1];
+          const ckpt = state.checkpoints.find(c => c.projectId === project.id);
+          if (ckpt) navigateToCheckpoint(ckpt);
+          return;
+        }
       }
       // Tab+1..9: jump to pane with that shortcut number
       if (tabHeld && e.key >= '1' && e.key <= '9') {
