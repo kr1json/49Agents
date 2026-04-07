@@ -1514,19 +1514,23 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
       for (let i = 0; i < onlineAgents.length; i++) {
         const a = onlineAgents[i];
         const r = results[i];
+        const hostname = a.displayName || a.hostname || a.agentId;
         if (r.status === 'fulfilled' && r.value) {
           anySuccess = true;
-          newByAgent[a.agentId] = {
-            hostname: a.displayName || a.hostname || a.agentId,
-            data: r.value,
-          };
+          newByAgent[a.agentId] = { hostname, data: r.value };
+        } else {
+          // Keep failed agents visible with error indicator
+          const errMsg = r.status === 'rejected'
+            ? (r.reason?.message || 'Failed to fetch usage')
+            : 'No data';
+          newByAgent[a.agentId] = { hostname, data: null, error: errMsg };
         }
       }
+      agentsUsageByAgent = newByAgent;
       if (anySuccess) {
-        agentsUsageByAgent = newByAgent;
         // Keep legacy single-agent data as first result for header pct
-        const firstKey = Object.keys(newByAgent)[0];
-        agentsUsageData = newByAgent[firstKey].data;
+        const firstEntry = Object.values(newByAgent).find(e => e.data);
+        agentsUsageData = firstEntry ? firstEntry.data : null;
         agentsUsageLastUpdated = Date.now();
         agentsUsageFetchError = null;
       } else {
@@ -1620,13 +1624,17 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
     }
 
     for (const entry of agentEntries) {
-      const d = entry.data;
-      if (!d) continue;
       // Always show machine name header with device color
       const dc = getDeviceColor(entry.hostname);
       const nameColor = dc ? dc.text : '#4ec9b0';
       const borderColor = dc ? dc.border : 'rgba(78,201,176,0.2)';
       blocks += `<div style="font-size:11px;color:${nameColor};margin:${blocks ? '10px' : '0'} 0 4px;font-weight:600;border-bottom:1px solid ${borderColor};padding-bottom:3px;">${entry.hostname}</div>`;
+      const d = entry.data;
+      if (!d) {
+        // Show error state for agents whose usage request failed
+        blocks += `<div style="font-size:11px;color:#e55;padding:4px 0;">Usage unavailable</div>`;
+        continue;
+      }
       addBlock('5-hour window', d.five_hour);
       addBlock('7-day window', d.seven_day);
       addBlock('7-day sonnet', d.seven_day_sonnet);
@@ -7408,11 +7416,30 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
     // fit() itself changes the terminal element size.
     let fitting = false;
 
+    // When fit() increases rows, xterm absorbs scrollback lines into the
+    // visible area. tmux then repaints and overwrites those absorbed lines,
+    // permanently losing the scrollback. Track this and schedule a reattach
+    // to re-inject history from the agent.
+    let reattachTimer = null;
+
     function safeFit() {
       if (fitting) return;
       fitting = true;
       try {
+        const baseYBefore = xterm.buffer.active.baseY;
         fitAddon.fit();
+        const baseYAfter = xterm.buffer.active.baseY;
+
+        // Scrollback was absorbed — schedule a reattach to restore history.
+        // Debounced so rapid resizes only trigger one reattach.
+        if (baseYBefore > 0 && baseYAfter < baseYBefore) {
+          if (reattachTimer) clearTimeout(reattachTimer);
+          reattachTimer = setTimeout(() => {
+            reattachTimer = null;
+            const pane = state.panes.find(p => p.id === paneData.id);
+            if (pane) reattachTerminal(pane);
+          }, 600); // wait for tmux repaint to settle
+        }
       } catch (e) {
         // Ignore fit errors
       } finally {
