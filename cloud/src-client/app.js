@@ -5737,8 +5737,13 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
       overviewRulerLanes: 0,
       hideCursorInOverviewRuler: true,
       overviewRulerBorder: false,
-      contextmenu: true,
+      contextmenu: false,
       fixedOverflowWidgets: true,
+      quickSuggestions: false,
+      suggestOnTriggerCharacters: false,
+      wordBasedSuggestions: 'off',
+      parameterHints: { enabled: false },
+      suggest: { enabled: false },
       placeholder: 'Quick notes... (markdown supported)',
     });
 
@@ -5830,9 +5835,9 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
   }
 
   // Render markdown to HTML for preview mode (sanitized to prevent XSS)
-  function renderMarkdownPreview(markdown) {
+  async function renderMarkdownPreview(markdown) {
     if (window.marked) {
-      const raw = window.marked.parse(markdown || '', { breaks: true, gfm: true });
+      const raw = await window.marked.parse(markdown || '', { breaks: true, gfm: true });
       return window.DOMPurify ? window.DOMPurify.sanitize(raw) : raw;
     }
     // Fallback: escape HTML and convert newlines
@@ -7033,7 +7038,7 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
     const mountEl = paneEl.querySelector('.note-editor-mount');
     const previewEl = paneEl.querySelector('.note-markdown-preview');
 
-    function enterTextOnly() {
+    async function enterTextOnly() {
       paneEl.classList.add('text-only');
       paneData.textOnly = true;
 
@@ -7046,7 +7051,7 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
       // Hide Monaco, show rendered preview
       mountEl.style.display = 'none';
       previewEl.style.display = 'block';
-      previewEl.innerHTML = renderMarkdownPreview(paneData.content);
+      previewEl.innerHTML = await renderMarkdownPreview(paneData.content);
       const baseFontSize = paneData.fontSize || 14;
       const scale = (paneData.zoomLevel || 100) / 100;
       previewEl.style.fontSize = `${Math.round(baseFontSize * scale)}px`;
@@ -7103,7 +7108,7 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
       paneEl.classList.add('text-only');
       mountEl.style.display = 'none';
       previewEl.style.display = 'block';
-      previewEl.innerHTML = renderMarkdownPreview(paneData.content);
+      renderMarkdownPreview(paneData.content).then(html => { previewEl.innerHTML = html; });
       const baseFontSize = paneData.fontSize || 14;
       const scale = (paneData.zoomLevel || 100) / 100;
       previewEl.style.fontSize = `${Math.round(baseFontSize * scale)}px`;
