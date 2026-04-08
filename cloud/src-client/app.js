@@ -50,6 +50,10 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
   // Folder panes map (paneId -> { refreshInterval })
   const folderPanes = new Map();
 
+  // Tab groups: panes sharing a tabGroupId appear as tabs in one window.
+  // Only the active tab's DOM element is visible; siblings are display:none.
+  let nextTabGroupId = 1;
+
   // Notification state — imported from modules/notifications.js
   // (previousClaudeStates, notifiedStates, activeToasts, snoozedNotifications, snoozeCount)
   // Sound state — imported from modules/sounds.js
@@ -530,6 +534,8 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
       if (pane.shortcutNumber) metadata.shortcutNumber = pane.shortcutNumber;
       if (pane.paneName) metadata.paneName = pane.paneName;
       if (pane.checkpointName) metadata.checkpointName = pane.checkpointName;
+      if (pane.tabGroupId) metadata.tabGroupId = pane.tabGroupId;
+      if (pane.tabGroupActive) metadata.tabGroupActive = true;
       cloudFetch('PUT', `/api/layouts/${pane.id}`, {
         paneType: pane.type,
         positionX: pane.x,
@@ -3897,6 +3903,8 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
           if (cl.metadata.workingDir) pane.workingDir = cl.metadata.workingDir;
           if (cl.metadata.shortcutNumber) pane.shortcutNumber = cl.metadata.shortcutNumber;
           if (cl.metadata.paneName) pane.paneName = cl.metadata.paneName;
+          if (cl.metadata.tabGroupId) pane.tabGroupId = cl.metadata.tabGroupId;
+          if (cl.metadata.tabGroupActive) pane.tabGroupActive = true;
         }
         // Fill in device from agent hostname if the agent didn't return one
         if (!pane.device && agentHostname) pane.device = agentHostname;
@@ -3976,6 +3984,8 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
             if (meta.shortcutNumber) pane.shortcutNumber = meta.shortcutNumber;
             if (meta.paneName) pane.paneName = meta.paneName;
             if (meta.checkpointName) pane.checkpointName = meta.checkpointName;
+            if (meta.tabGroupId) pane.tabGroupId = meta.tabGroupId;
+            if (meta.tabGroupActive) pane.tabGroupActive = true;
             state.panes.push(pane); _telemetry.trackPaneOpen(pane);
             // Checkpoint panes are client-only — render them directly, not as offline placeholders
             if (pane.type === 'checkpoint') {
@@ -4013,6 +4023,14 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
 
     } catch (e) {
       console.error('[App] Failed to load panes:', e);
+    }
+
+    // Ensure nextTabGroupId is ahead of any restored groups
+    for (const p of state.panes) {
+      if (p.tabGroupId) {
+        const match = p.tabGroupId.match(/^tg-(\d+)$/);
+        if (match) nextTabGroupId = Math.max(nextTabGroupId, parseInt(match[1], 10) + 1);
+      }
     }
 
     // Re-apply cached claude states now that panes are rendered
@@ -5184,6 +5202,276 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
   }
 
   // ============================================================================
+  // SECTION 12b: TAB GROUPS                                       [Tab grouping]
+  // Panes sharing a tabGroupId appear as tabs in a single window.
+  // Only the active tab is visible; siblings are hidden (display:none).
+  // ============================================================================
+
+  function getTabGroupPanes(tabGroupId) {
+    if (!tabGroupId) return [];
+    return state.panes.filter(p => p.tabGroupId === tabGroupId);
+  }
+
+  function getActiveTabPane(tabGroupId) {
+    return getTabGroupPanes(tabGroupId).find(p => p.tabGroupActive);
+  }
+
+  // Switch to a different tab within a group
+  function switchTab(targetPaneId) {
+    const targetPane = state.panes.find(p => p.id === targetPaneId);
+    if (!targetPane || !targetPane.tabGroupId) return;
+
+    const groupPanes = getTabGroupPanes(targetPane.tabGroupId);
+    const currentActive = groupPanes.find(p => p.tabGroupActive);
+
+    if (currentActive && currentActive.id === targetPaneId) return; // already active
+
+    // Sync geometry from current active to target before switching
+    if (currentActive) {
+      targetPane.x = currentActive.x;
+      targetPane.y = currentActive.y;
+      targetPane.width = currentActive.width;
+      targetPane.height = currentActive.height;
+      targetPane.zIndex = currentActive.zIndex;
+      currentActive.tabGroupActive = false;
+
+      const currentEl = document.getElementById(`pane-${currentActive.id}`);
+      if (currentEl) currentEl.style.display = 'none';
+    }
+
+    targetPane.tabGroupActive = true;
+    const targetEl = document.getElementById(`pane-${targetPaneId}`);
+    if (targetEl) {
+      targetEl.style.display = '';
+      targetEl.style.left = `${targetPane.x}px`;
+      targetEl.style.top = `${targetPane.y}px`;
+      targetEl.style.width = `${targetPane.width}px`;
+      targetEl.style.height = `${targetPane.height}px`;
+      targetEl.style.zIndex = targetPane.zIndex;
+    }
+
+    // Refit terminal after showing (dimensions may have changed while hidden)
+    const termInfo = terminals.get(targetPaneId);
+    if (termInfo) {
+      setTimeout(() => {
+        try {
+          if (termInfo.safeFitAndSync) termInfo.safeFitAndSync();
+          else termInfo.fitAddon.fit();
+        } catch (e) { /* ignore */ }
+      }, 50);
+    }
+
+    // Re-render tab bars for all panes in the group
+    refreshTabBars(targetPane.tabGroupId);
+    focusPane(targetPane);
+    focusTerminalInput(targetPaneId);
+
+    // Persist state
+    groupPanes.forEach(p => cloudSaveLayout(p));
+  }
+
+  // Sync position/size from the active tab to all hidden siblings
+  function syncTabGroupGeometry(paneData) {
+    if (!paneData.tabGroupId) return;
+    const siblings = getTabGroupPanes(paneData.tabGroupId);
+    for (const sib of siblings) {
+      if (sib.id === paneData.id) continue;
+      sib.x = paneData.x;
+      sib.y = paneData.y;
+      sib.width = paneData.width;
+      sib.height = paneData.height;
+      // Don't update DOM for hidden panes — it'll sync when switchTab shows them
+    }
+  }
+
+  // Create a new terminal tab in the same group as an existing pane
+  async function createTabInGroup(sourcePaneId) {
+    const sourcePane = state.panes.find(p => p.id === sourcePaneId);
+    if (!sourcePane || sourcePane.type !== 'terminal') return;
+
+    // If source pane has no group yet, assign one
+    if (!sourcePane.tabGroupId) {
+      sourcePane.tabGroupId = `tg-${nextTabGroupId++}`;
+      sourcePane.tabGroupActive = true;
+      cloudSaveLayout(sourcePane);
+    }
+
+    const groupId = sourcePane.tabGroupId;
+    const agentId = sourcePane.agentId || activeAgentId;
+
+    try {
+      const reqBody = {
+        workingDir: sourcePane.workingDir || '~',
+        position: { x: sourcePane.x, y: sourcePane.y },
+        size: { width: sourcePane.width, height: sourcePane.height }
+      };
+      if (sourcePane.device) reqBody.device = sourcePane.device;
+      const terminal = await agentRequest('POST', '/api/terminals', reqBody, agentId);
+
+      const pane = {
+        id: terminal.id,
+        type: 'terminal',
+        x: sourcePane.x,
+        y: sourcePane.y,
+        width: sourcePane.width,
+        height: sourcePane.height,
+        zIndex: sourcePane.zIndex,
+        tmuxSession: terminal.tmuxSession,
+        device: terminal.device || sourcePane.device || null,
+        agentId: agentId,
+        tabGroupId: groupId,
+        tabGroupActive: false, // will become active after switchTab
+      };
+
+      state.panes.push(pane);
+      _telemetry.trackPaneOpen(pane);
+      renderPane(pane);
+      cloudSaveLayout(pane);
+
+      // Hide immediately since it's not the active tab yet
+      const newEl = document.getElementById(`pane-${pane.id}`);
+      if (newEl) newEl.style.display = 'none';
+
+      // Wait for terminal init, then switch to the new tab
+      await new Promise(r => setTimeout(r, 200));
+      switchTab(pane.id);
+
+      // Refresh tab bars on the source pane too (it now has a tab bar)
+      refreshTabBars(groupId);
+
+    } catch (e) {
+      console.error('[App] Failed to create tab:', e);
+    }
+  }
+
+  // Re-render tab bars on all visible panes in a group
+  function refreshTabBars(tabGroupId) {
+    if (!tabGroupId) return;
+    const groupPanes = getTabGroupPanes(tabGroupId);
+    for (const p of groupPanes) {
+      const paneEl = document.getElementById(`pane-${p.id}`);
+      if (!paneEl) continue;
+      renderTabBar(paneEl, p);
+    }
+  }
+
+  // Render (or update) the tab bar inside a pane element
+  function renderTabBar(paneEl, paneData) {
+    // Remove existing tab bar if any
+    const existing = paneEl.querySelector('.tab-bar');
+    if (existing) existing.remove();
+
+    if (!paneData.tabGroupId) return;
+
+    const groupPanes = getTabGroupPanes(paneData.tabGroupId);
+    if (groupPanes.length < 2) return; // no bar needed for single-tab groups
+
+    const bar = document.createElement('div');
+    bar.className = 'tab-bar';
+
+    groupPanes.forEach((p, idx) => {
+      const tab = document.createElement('div');
+      tab.className = 'tab-bar-tab' + (p.tabGroupActive ? ' active' : '');
+      tab.dataset.paneId = p.id;
+
+      const label = document.createElement('span');
+      label.className = 'tab-bar-label';
+      label.textContent = p.paneName || `Terminal ${idx + 1}`;
+      tab.appendChild(label);
+
+      // Close button per tab
+      const closeBtn = document.createElement('span');
+      closeBtn.className = 'tab-bar-close';
+      closeBtn.innerHTML = '&times;';
+      closeBtn.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+      });
+      closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeTabInGroup(p.id);
+      });
+      tab.appendChild(closeBtn);
+
+      // Click to switch tab
+      tab.addEventListener('mousedown', (e) => {
+        e.stopPropagation(); // don't start drag
+      });
+      tab.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!p.tabGroupActive) switchTab(p.id);
+      });
+
+      bar.appendChild(tab);
+    });
+
+    // Add "+" button at end of tab bar
+    const addBtn = document.createElement('div');
+    addBtn.className = 'tab-bar-add';
+    addBtn.textContent = '+';
+    addBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    addBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      createTabInGroup(paneData.id);
+    });
+    bar.appendChild(addBtn);
+
+    // Insert after .pane-header
+    const header = paneEl.querySelector('.pane-header');
+    if (header) {
+      header.insertAdjacentElement('afterend', bar);
+    }
+  }
+
+  // Close a tab within a group
+  function closeTabInGroup(paneId) {
+    const pane = state.panes.find(p => p.id === paneId);
+    if (!pane || !pane.tabGroupId) {
+      deletePane(paneId);
+      return;
+    }
+
+    const groupId = pane.tabGroupId;
+    const groupPanes = getTabGroupPanes(groupId);
+
+    if (groupPanes.length <= 1) {
+      // Last tab in group — dissolve group and delete normally
+      pane.tabGroupId = null;
+      pane.tabGroupActive = false;
+      deletePane(paneId);
+      return;
+    }
+
+    const wasActive = pane.tabGroupActive;
+
+    // If closing the active tab, switch to adjacent first
+    if (wasActive) {
+      const idx = groupPanes.findIndex(p => p.id === paneId);
+      const nextIdx = idx < groupPanes.length - 1 ? idx + 1 : idx - 1;
+      switchTab(groupPanes[nextIdx].id);
+    }
+
+    // Now delete the pane
+    deletePane(paneId);
+
+    // If only one tab remains, dissolve the group
+    const remaining = getTabGroupPanes(groupId);
+    if (remaining.length === 1) {
+      remaining[0].tabGroupId = null;
+      remaining[0].tabGroupActive = false;
+      cloudSaveLayout(remaining[0]);
+      // Remove the tab bar from the remaining pane
+      const el = document.getElementById(`pane-${remaining[0].id}`);
+      if (el) {
+        const bar = el.querySelector('.tab-bar');
+        if (bar) bar.remove();
+      }
+    } else {
+      refreshTabBars(groupId);
+    }
+  }
+
+  // ============================================================================
   // SECTION 13: TERMINAL LIFECYCLE & PANE RENDERING              [Lines ~4704-5086]
   // attachTerminal(), reattachTerminal(), renderPane() dispatcher,
   // renderFilePane(), Monaco file editor setup, device colors,
@@ -5261,6 +5549,7 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
             <button class="pane-zoom-btn zoom-in" data-tooltip="Zoom in">+</button>
           </div>
           <span class="connection-status connecting" data-tooltip="Connecting"></span>
+          <button class="pane-new-tab" aria-label="New tab" data-tooltip="New tab (Tab+=)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
           <button class="pane-expand" aria-label="Expand pane" data-tooltip="Expand">⛶</button>
           <button class="pane-close" aria-label="Close pane"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
@@ -5286,6 +5575,15 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
 
     // Initialize xterm.js
     initTerminal(pane, paneData);
+
+    // Render tab bar if this pane is part of a tab group
+    if (paneData.tabGroupId) {
+      renderTabBar(pane, paneData);
+      // Hide if not the active tab
+      if (!paneData.tabGroupActive) {
+        pane.style.display = 'none';
+      }
+    }
   }
 
   // Render a file pane
@@ -7766,6 +8064,16 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
     const zoomInBtn = paneEl.querySelector('.zoom-in');
     const zoomOutBtn = paneEl.querySelector('.zoom-out');
 
+    // New tab button
+    const newTabBtn = paneEl.querySelector('.pane-new-tab');
+    if (newTabBtn) {
+      newTabBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        createTabInGroup(paneData.id);
+      });
+      newTabBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    }
+
     // Apply device color to header
     applyDeviceHeaderColor(paneEl, paneData.device);
 
@@ -7810,6 +8118,7 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
             paneNameEl.classList.add('empty');
           }
           cloudSaveLayout(paneData);
+          if (paneData.tabGroupId) refreshTabBars(paneData.tabGroupId);
         };
 
         input.addEventListener('blur', commit);
@@ -8220,12 +8529,14 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
     // Close button
     closeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      deletePane(paneData.id);
+      if (paneData.tabGroupId) closeTabInGroup(paneData.id);
+      else deletePane(paneData.id);
     });
     closeBtn.addEventListener('touchend', (e) => {
       e.stopPropagation();
       e.preventDefault();
-      deletePane(paneData.id);
+      if (paneData.tabGroupId) closeTabInGroup(paneData.id);
+      else deletePane(paneData.id);
     });
 
     // Expand/Collapse button (only for terminal and file panes, not notes)
@@ -8527,6 +8838,7 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
       paneEl.style.top = `${newY}px`;
       paneData.x = newX;
       paneData.y = newY;
+      syncTabGroupGeometry(paneData);
 
       // Move the rest of the group by the same delta
       if (isGroupDrag) {
@@ -8652,6 +8964,7 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
       paneEl.style.height = `${newHeight}px`;
       paneData.width = newWidth;
       paneData.height = newHeight;
+      syncTabGroupGeometry(paneData);
 
       // Debounced refit terminal
       debouncedFit();
@@ -8935,6 +9248,7 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
           paneEl.style.top = `${newY}px`;
           paneData.x = newX;
           paneData.y = newY;
+          syncTabGroupGeometry(paneData);
 
           // Move rest of group by same delta
           const groupDx = newX - anchorStartX;
@@ -11841,7 +12155,11 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
         } else {
           // Single mode: close focused pane (fallback to DOM query if lastFocusedPaneId is stale)
           const targetId = lastFocusedPaneId || (document.querySelector('.pane.focused')?.dataset?.paneId);
-          if (targetId) deletePane(targetId);
+          if (targetId) {
+            const targetPane = state.panes.find(p => p.id === targetId);
+            if (targetPane && targetPane.tabGroupId) closeTabInGroup(targetId);
+            else deletePane(targetId);
+          }
         }
         return;
       }
@@ -11864,6 +12182,35 @@ import { initGitGraphDeps, renderGitGraphPane, fetchGitGraphData } from './modul
         e.preventDefault();
         e.stopPropagation();
         toggleProjectsSidebar();
+        return;
+      }
+      // Tab+`: cycle to next tab in focused pane's tab group
+      if (e.key === '`' && tabHeld) {
+        tabChordUsed = true;
+        e.preventDefault();
+        e.stopPropagation();
+        const focusedPane = lastFocusedPaneId && state.panes.find(p => p.id === lastFocusedPaneId);
+        if (focusedPane && focusedPane.tabGroupId) {
+          const groupPanes = getTabGroupPanes(focusedPane.tabGroupId);
+          if (groupPanes.length > 1) {
+            const activeIdx = groupPanes.findIndex(p => p.tabGroupActive);
+            const nextIdx = (activeIdx + 1) % groupPanes.length;
+            switchTab(groupPanes[nextIdx].id);
+          }
+        }
+        return;
+      }
+      // Tab+=: create new tab in focused pane's group
+      if (e.key === '=' && tabHeld) {
+        tabChordUsed = true;
+        e.preventDefault();
+        e.stopPropagation();
+        if (lastFocusedPaneId) {
+          const focusedPane = state.panes.find(p => p.id === lastFocusedPaneId);
+          if (focusedPane && focusedPane.type === 'terminal') {
+            createTabInGroup(lastFocusedPaneId);
+          }
+        }
         return;
       }
       // Tab+1..9: jump to pane or project with that shortcut number (shared pool)
