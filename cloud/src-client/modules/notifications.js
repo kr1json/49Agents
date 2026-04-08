@@ -217,6 +217,58 @@ export function dismissToast(terminalId) {
   }
 }
 
+// ── Admin notifications ──
+
+const adminToasts = new Map();
+
+export function showAdminToast(notification) {
+  const toastId = `admin-notif-${notification.id}`;
+  if (adminToasts.has(toastId)) return;
+
+  const toast = document.createElement('div');
+  toast.className = `notification-toast admin-notification admin-notification-${notification.type || 'info'}`;
+  toast.dataset.notifId = notification.id;
+
+  const iconMap = { info: '\u2139\uFE0F', warning: '\u26A0\uFE0F', error: '\u274C' };
+  const icon = iconMap[notification.type] || iconMap.info;
+
+  toast.innerHTML = `
+    <div class="notification-icon">${icon}</div>
+    <div class="notification-body">
+      <div class="notification-title">${escapeHtml(notification.message)}</div>
+      <div class="notification-device admin-notification-meta">From 49Agents team</div>
+    </div>
+    <button class="notification-dismiss" data-tooltip="Dismiss">&times;</button>
+  `;
+
+  const dismissBtn = toast.querySelector('.notification-dismiss');
+  dismissBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dismissAdminToast(notification.id);
+  });
+
+  toast.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dismissAdminToast(notification.id);
+  });
+
+  notificationContainer.prepend(toast);
+  adminToasts.set(toastId, toast);
+  requestAnimationFrame(() => toast.classList.add('visible'));
+}
+
+export function dismissAdminToast(notifId) {
+  const toastId = `admin-notif-${notifId}`;
+  const toast = adminToasts.get(toastId);
+  if (toast) {
+    toast.classList.add('dismissing');
+    adminToasts.delete(toastId);
+    setTimeout(() => toast.remove(), 200);
+  }
+  fetch(`/api/notifications/${notifId}/dismiss`, { method: 'POST' }).catch(() => {});
+}
+
 // ── Browser notifications ──
 
 export function sendBrowserNotification(terminalId, title, body) {

@@ -2578,6 +2578,54 @@ body.minimap-hidden #controls {
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
+/* Admin notifications */
+.admin-notification-info {
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    0 0 12px rgba(59, 130, 246, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.admin-notification-info:hover {
+  border-left: 3px solid rgba(59, 130, 246, 0.8);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 20px rgba(59, 130, 246, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.admin-notification-warning {
+  border-color: rgba(234, 179, 8, 0.5);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    0 0 12px rgba(234, 179, 8, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.admin-notification-warning:hover {
+  border-left: 3px solid rgba(234, 179, 8, 0.8);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 20px rgba(234, 179, 8, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.admin-notification-error {
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    0 0 12px rgba(239, 68, 68, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.admin-notification-error:hover {
+  border-left: 3px solid rgba(239, 68, 68, 0.8);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 20px rgba(239, 68, 68, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.admin-notification-meta {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 10px;
+}
+
 .notification-icon {
   font-size: 20px;
   flex-shrink: 0;

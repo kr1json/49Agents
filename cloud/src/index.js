@@ -17,6 +17,7 @@ import { setupDownloadRoutes } from './routes/download.js';
 import { setupPreferencesRoutes } from './routes/preferences.js';
 import { setupAnalyticsRoutes } from './routes/analytics.js';
 import { setupWebSocketRelay } from './ws/relay.js';
+import { setupNotificationRoutes } from './routes/notifications.js';
 import { setupCloudCallbackRoutes } from './auth/cloudCallback.js';
 import { ensureLocalAuthTable, isLocalMode } from './auth/localAuth.js';
 import { initLocalTelemetryCollector } from './telemetry/localCollector.js';
@@ -280,6 +281,9 @@ async function start() {
 
   // Set up the WebSocket relay (handles /ws and /agent-ws upgrade routes)
   const { userAgents, userBrowsers } = setupWebSocketRelay(server, { latestAgentVersion });
+
+  // Notification routes (user-facing: fetch + dismiss)
+  setupNotificationRoutes(app);
 
   // Load extensions if present (private/cloud-only features)
   const extensionsDir = resolve(__dirname, '..', '..', 'extensions');
